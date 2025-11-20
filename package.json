@@ -1,0 +1,14 @@
+{
+  "name": "myzkii-backend",
+  "version": "1.0.0",
+  "description": "Backend pour myzkii avec endpoints Firestore (Vercel)",
+  "main": "api/timer_start.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "node api/timer_start.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.11.1",
+    "cookie": "^0.5.0"
+  }
+}

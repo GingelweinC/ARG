@@ -1,0 +1,211 @@
+#loginOverlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 32, 0, 0.92);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(2px);
+}
+#loginModal {
+    background: #001a00;
+    color: #00ff41;
+    padding: 2.2rem 2rem 2rem 2rem;
+    border-radius: 12px;
+    width: 350px;
+    max-width: 90%;
+    text-align: center;
+    font-family: 'Fira Mono', 'Consolas', 'monospace';
+    border: 2.5px solid #00ff41;
+    box-shadow: 0 0 32px #00ff4133, 0 0 8px #003300;
+    position: relative;
+    overflow: hidden;
+}
+#loginModal h2 {
+    font-size: 2.1rem;
+    margin-bottom: 1.5rem;
+    color: #b6ff00;
+    text-shadow: 0 0 8px #00ff41, 0 0 16px #003300;
+    letter-spacing: 2px;
+}
+#loginModal p {
+    margin-bottom: 1.5rem;
+    font-size: 1.1rem;
+    color: #00ff41;
+    text-shadow: 0 0 4px #00ff41;
+}
+.login-input {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 1rem;
+    border: 2px solid #00ff41;
+    border-radius: 4px;
+    background: #002200;
+    color: #00ff41;
+    font-size: 1rem;
+    font-family: 'Fira Mono', 'Consolas', 'monospace';
+    box-shadow: 0 0 8px #00330044;
+    outline: none;
+    transition: border 0.2s, box-shadow 0.2s;
+}
+.login-input:focus {
+    border-color: #b6ff00;
+    box-shadow: 0 0 16px #b6ff00;
+}
+.login-input::placeholder {
+    color: #009900;
+    opacity: 0.7;
+}
+.login-btn-group {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 1rem;
+}
+.modal-btn {
+    padding: 10px 24px;
+    border: 2px solid #00ff41;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: 'Fira Mono', 'Consolas', 'monospace';
+    background: #001a00;
+    color: #00ff41;
+    box-shadow: 0 0 8px #00330044;
+    transition: background 0.2s, color 0.2s, border 0.2s, box-shadow 0.2s;
+}
+#submitBtn {
+    border-color: #00ff41;
+    color: #00ff41;
+    background: #002a00;
+}
+#submitBtn:hover {
+    background: #003300;
+    color: #b6ff00;
+    border-color: #b6ff00;
+    box-shadow: 0 0 16px #b6ff00;
+}
+#cancelBtn {
+    border-color: #003300;
+    color: #009900;
+    background: #001a00;
+}
+#cancelBtn:hover {
+    background: #002a00;
+    color: #b6ff00;
+    border-color: #b6ff00;
+    box-shadow: 0 0 8px #b6ff00;
+}
+.error-message {
+    color: #ff4d4d;
+    font-size: 0.95rem;
+    margin-top: 0.5rem;
+    display: none;
+    text-shadow: 0 0 4px #ff4d4d, 0 0 8px #001a00;
+}
+.login-btn-main {
+    background: linear-gradient(90deg, #000000 0%, #000000 100%);
+    color: #ff0000;
+    border: none;
+    border-radius: 25px;
+    padding: 12px 32px;
+    font-size: 1.1rem;
+    font-family: 'Creepster', cursive;
+    font-weight: bold;
+    box-shadow: 0 4px 16px rgba(255,77,77,0.15);
+    cursor: pointer;
+    transition: background 0.3s, transform 0.2s, box-shadow 0.3s;
+    letter-spacing: 1px;
+    outline: none;
+}
+.login-btn-main:hover, .login-btn-main:focus {
+    background: linear-gradient(90deg, #ff1a1a 0%, #ff4d88 100%);
+    transform: translateY(-2px) scale(1.04);
+    box-shadow: 0 8px 24px rgba(255,77,77,0.25);
+}
+.topbar-login {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 56px;
+    background: linear-gradient(90deg, #001a00 0%, #003300 100%);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    z-index: 1100;
+    box-shadow: 0 2px 8px #001a0033;
+    padding-right: 32px;
+}
+.topbar-login .login-btn-main {
+    margin: 0;
+    background: #001a00;
+    color: #00ff41;
+    border: 2px solid #00ff41;
+    border-radius: 6px;
+    padding: 10px 32px;
+    font-size: 1.2rem;
+    font-family: 'Fira Mono', 'Consolas', 'monospace';
+    font-weight: bold;
+    box-shadow: 0 0 16px #00ff4133, 0 0 2px #003300;
+    cursor: pointer;
+    letter-spacing: 1px;
+    outline: none;
+    text-shadow: 0 0 4px #00ff41, 0 0 12px #003300;
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s, border 0.2s;
+}
+.topbar-login .login-btn-main:hover, .topbar-login .login-btn-main:focus {
+    background: #003300;
+    color: #b6ff00;
+    border-color: #b6ff00;
+    box-shadow: 0 0 32px #b6ff00, 0 0 8px #00ff41;
+    text-shadow: 0 0 8px #b6ff00, 0 0 16px #00ff41;
+}
+body {
+    padding-top: 56px;
+}
+.glitch-link {
+  position: relative;
+  color: #00ff41;
+  font-family: 'Fira Mono', 'Consolas', 'monospace';
+  cursor: pointer;
+  background: rgba(0, 32, 0, 0.85);
+  border-radius: 2px;
+  padding: 0 3px;
+  letter-spacing: 0.5px;
+  text-shadow:
+    0 0 2px #00ff41,
+    0 0 6px #00ff41,
+    0 0 12px #00ff41,
+    0 0 24px #003300;
+  box-shadow: 0 0 8px #00330044;
+  transition: filter 0.2s, text-shadow 0.2s, color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.glitch-link::after {
+  content: '_';
+  color: #00ff41;
+  opacity: 0.7;
+  position: absolute;
+  right: -7px;
+  top: 0;
+  font-size: 1em;
+  animation: blink-cursor 1s steps(1) infinite;
+  pointer-events: none;
+}
+.glitch-link:hover, .glitch-link:focus {
+  color: #b6ff00;
+  background: rgba(0, 64, 0, 0.95);
+  filter: brightness(1.9) drop-shadow(0 0 8px #b6ff00);
+  text-shadow:
+    0 0 8px #b6ff00,
+    0 0 16px #00ff41,
+    0 0 32px #b6ff00;
+  box-shadow: 0 0 24px #00ff41, 0 0 48px #b6ff00;
+}
+@keyframes blink-cursor {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0; }
+}

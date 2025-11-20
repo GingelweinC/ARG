@@ -1,0 +1,15 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/see_you_soon.png", "destination": "/api/see_you_soon" },
+    { "source": "/dashboard.html", "destination": "/api/protected-dashboard" },
+    { "source": "/page1.html", "destination": "/api/protected-page?page=1" },
+    { "source": "/page2.html", "destination": "/api/protected-page?page=2" },
+    { "source": "/page3.html", "destination": "/api/protected-page?page=3" },
+    { "source": "/page4.html", "destination": "/api/protected-page?page=4" },
+    { "source": "/page5.html", "destination": "/api/protected-page?page=5" },
+    { "source": "/page6.html", "destination": "/api/protected-page?page=6" },
+    { "source": "/page7.html", "destination": "/api/protected-page?page=7" },
+    { "source": "/page8.html", "destination": "/api/protected-page?page=8" }
+  ]
+}

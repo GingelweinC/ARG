@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+  <html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        background-color: #000;
+        font-family: 'VT323', monospace;
+        color: #0f0;
+        text-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+        height: 100vh;
+        overflow: hidden;
+        visibility: hidden;
+        opacity: 0;
+        transition: opacity 0.2s;
+      }
+      body.auth-ok {
+        visibility: visible;
+        opacity: 1;
+      }
+      html, body { height: 100%; }
+      .crt-monitor {
+        width: 100vw;
+        height: 100vh;
+        max-width: 100vw;
+        max-height: 100vh;
+        background-color: #001100;
+        box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.7);
+        padding: 30px 0 30px 0;
+        position: relative;
+        animation: flicker 0.1s infinite;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
+      }
+      .crt-monitor.shake { animation: shake 0.18s linear; }
+      .crt-overlay, .scanlines, .glitch, .monitor-frame, .power-light {
+        position: absolute; pointer-events: none; z-index: 2;
+      }
+      .crt-overlay {
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: 
+          repeating-linear-gradient(rgba(0,30,0,0.3), rgba(0,30,0,0.3) 1px, transparent 1px, transparent 2px),
+          repeating-linear-gradient(90deg, rgba(0,30,0,0.3), rgba(0,30,0,0.3) 1px, transparent 1px, transparent 2px);
+      }
+      .scanlines {
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: linear-gradient(to bottom, rgba(0, 30, 0, 0.1) 50%, transparent 50%);
+        background-size: 100% 4px;
+        animation: scanline 6s linear infinite;
+      }
+      .glitch {
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0, 30, 0, 0.1);
+        opacity: 0;
+        z-index: 3;
+      }
+      .monitor-frame {
+        top: 0; left: 0; right: 0; bottom: 0;
+        border: 4px solid #333;
+        z-index: 4;
+      }
+      .power-light {
+        top: 18px;
+        right: 32px;
+        bottom: unset;
+        left: unset;
+        width: 15px;
+        height: 15px;
+        background-color: #0f0;
+        border-radius: 50%;
+        box-shadow: 0 0 15px #0f0;
+        animation: pulse 2s infinite;
+        z-index: 5;
+      }
+      .content {
+        z-index: 1;
+        text-align: center;
+        max-width: 1400px;
+        margin: 0 auto;
+        width: 95vw;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      .crt-lock {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .crt-lock-shackle {
+        width: 30px;
+        height: 20px;
+        border: 3px solid #0f0;
+        border-bottom: none;
+        border-radius: 15px 15px 0 0;
+        box-shadow: 0 0 4px #0f0;
+        animation: flicker 1.2s infinite;
+      }
+      .crt-lock-body {
+        width: 40px;
+        height: 35px;
+        background-color: transparent;
+        border: 3px solid #0f0;
+        box-shadow: 0 0 4px #0f0;
+        position: relative;
+        animation: flicker 1.2s infinite;
+      }
+      .crt-lock-body::before {
+        content: "";
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #0f0;
+        box-shadow: 0 0 3px #0f0;
+      }
+      .header {
+        font-size: 3rem;
+        margin-bottom: 20px;
+        text-transform: uppercase;
+        border-bottom: 2px solid #0f0;
+        padding-bottom: 15px;
+        letter-spacing: 2px;
+      }
+      .halo {
+        text-shadow: 0 0 20px #0f0, 0 0 40px #0f0, 0 0 60px #0f0;
+      }
+      .subtitle {
+        font-size: 1.7rem;
+        color: #bfffbf;
+        margin-bottom: 10px;
+        text-shadow: 0 0 8px #0f0;
+      }
+      .description {
+        font-size: 1.2rem;
+        color: #7fff7f;
+        margin-bottom: 30px;
+        text-shadow: 0 0 4px #0f0;
+      }
+      .options-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(180px, 1fr));
+        gap: 32px 40px;
+        margin-top: 10px;
+        margin-bottom: 50px;
+        justify-items: center;
+        width: 100%;
+        max-width: 1200px;
+      }
+      .option {
+        min-width: 160px;
+        max-width: 220px;
+        width: 100%;
+        min-height: 120px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-decoration: none;
+        color: #0f0;
+        border: 2px solid #0f0;
+        padding: 10px;
+        transition: background 0.2s;
+        box-shadow: 0 0 10px #0f05, 0 0 20px #0f02;
+        border-radius: 10px;
+        background: rgba(0,32,0,0.15);
+      }
+      .option:hover {
+        background-color: rgba(0, 255, 0, 0.18);
+        box-shadow: 0 0 30px #0f0, 0 0 10px #0f0;
+        transform: scale(1.05);
+        z-index: 2;
+      }
+      .terminal-input-wrapper {
+        display: flex;
+        align-items: center;
+        padding-left: 10px;
+      }
+      .terminal-prompt {
+        color: #0f0;
+        margin-right: 5px;
+        font-family: 'VT323', monospace;
+        font-size: 1.6rem;
+        text-shadow: 0 0 5px rgba(0, 255, 0, 0.3);
+      }
+      .terminal-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        color: #0f0;
+        font-size: 1.6rem;
+        font-family: 'VT323', monospace;
+        padding: 10px 5px;
+        outline: none;
+        caret-color: #0f0;
+      }
+      .terminal-container {
+        width: 100%;
+        margin-top: auto;
+        padding-top: 20px;
+        border-top: 2px solid #0f0;
+        display: flex;
+        flex-direction: column;
+        font-family: 'VT323', monospace;
+        font-size: 1.6rem;
+        color: #0f0;
+        margin-top: 40px;
+        border-radius: 10px;
+        background: rgba(0,32,0,0.12);
+        box-shadow: 0 0 10px #0f05;
+        padding-bottom: 20px;
+      }
+      .terminal-output {
+        text-align: left; 
+        padding-left: 10px;
+        min-height: 192px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        overflow: hidden;
+        line-height: 1.5;
+      }
+      .terminal-line {
+        white-space: pre-wrap;
+        text-shadow: 0 0 5px rgba(0, 255, 0, 0.3);
+      }
+      .terminal-output .redirect-msg { color: #4ec3ff; text-shadow: 0 0 8px #4ec3ff; font-weight: bold; }
+      .terminal-input::placeholder {
+        color: #0f0;
+        opacity: 0.4;
+      }
+      .garbage-text {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100vw;
+        padding: 8px 0 8px 18px;
+        font-family: 'VT323', monospace;
+        font-size: 1.3rem;
+        color: #0f0;
+        background: rgba(0,32,0,0.18);
+        letter-spacing: 2px;
+        text-shadow: 0 0 6px #0f0;
+        z-index: 20;
+        user-select: none;
+        pointer-events: none;
+      }
+      @keyframes flicker {
+        0% { opacity: 0.95; }
+        5% { opacity: 0.9; }
+        10% { opacity: 0.85; }
+        15% { opacity: 0.92; }
+        20% { opacity: 0.88; }
+        25% { opacity: 0.95; }
+        30% { opacity: 1; }
+        100% { opacity: 1; }
+      }
+      @keyframes scanline {
+        0% { transform: translateY(-100%); }
+        100% { transform: translateY(100%); }
+      }
+      @keyframes pulse {
+        0% { opacity: 0.3; }
+        50% { opacity: 1; }
+        100% { opacity: 0.3; }
+      }
+      @keyframes shake {
+        0% { transform: translate(0, 0) rotate(0deg); }
+        20% { transform: translate(-2px, 1px) rotate(-0.5deg); }
+        40% { transform: translate(2px, -1px) rotate(0.5deg); }
+        60% { transform: translate(-1px, 2px) rotate(-0.5deg); }
+        80% { transform: translate(1px, -2px) rotate(0.5deg); }
+        100% { transform: translate(0, 0) rotate(0deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="crt-monitor">
+      <div class="crt-overlay"></div>
+      <div class="scanlines"></div>
+      <div class="glitch"></div>
+      <div class="monitor-frame"></div>
+      <div class="power-light"></div>
+      <div class="content">
+        <div class="header halo">Dossiers sécurisés</div>
+        <div class="options-grid">
+          <div class="option" tabindex="0">
+            <div class="crt-lock"><div class="crt-lock-shackle"></div><div class="crt-lock-body"></div></div>DOSSIER 01
+          </div>
+          <div class="option" tabindex="0"><div class="crt-lock"><div class="crt-lock-shackle"></div><div class="crt-lock-body"></div></div>DOSSIER 02</div>
+          <div class="option" tabindex="0"><div class="crt-lock"><div class="crt-lock-shackle"></div><div class="crt-lock-body"></div></div>DOSSIER 03</div>
+          <div class="option" tabindex="0"><div class="crt-lock"><div class="crt-lock-shackle"></div><div class="crt-lock-body"></div></div>DOSSIER 04</div>
+          <div class="option" tabindex="0"><div class="crt-lock"><div class="crt-lock-shackle"></div><div class="crt-lock-body"></div></div>DOSSIER 05</div>
+          <div class="option" tabindex="0"><div class="crt-lock"><div class="crt-lock-shackle"></div><div class="crt-lock-body"></div></div>DOSSIER 06</div>
+          <div class="option" tabindex="0"><div class="crt-lock"><div class="crt-lock-shackle"></div><div class="crt-lock-body"></div></div>DOSSIER 07</div>
+          <div class="option" tabindex="0"><div class="crt-lock"><div class="crt-lock-shackle"></div><div class="crt-lock-body"></div></div>DOSSIER 08</div>
+        </div>
+        <div class="terminal-container">
+          <div id="terminal-output" class="terminal-output"></div>
+          <div class="terminal-input-wrapper">
+            <span class="terminal-prompt">&gt;&gt;</span>
+            <input id="terminal-input" class="terminal-input" type="text" autocomplete="off" />
+          </div>
+        </div>
+        <div id="random-garbage" class="garbage-text"></div>
+      </div>
+      <canvas id="bg-anim" style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:0;pointer-events:none;"></canvas>
+    </div>
+    <script>
+      // Verify authentication on page load
+      (async function() {
+        try {
+          const res = await fetch('/api/login', { method: 'GET', credentials: 'include' });
+          if (!res.ok) {
+            window.location.href = 'index.html';
+          } else {
+            const data = await res.json();
+            if (!data.authenticated) {
+              window.location.href = 'index.html';
+            } else {
+              document.body.classList.add('auth-ok');
+            }
+          }
+        } catch (e) {
+          window.location.href = 'index.html';
+        }
+      })();
+      let globalProgress = {};
+      fetch('/api/progress?global=1').then(r=>r.json()).then(data => {
+        globalProgress = data.unlocked || {};
+        document.querySelectorAll('.option').forEach((opt, idx) => {
+          const num = String(idx+1);
+          const lockShackle = opt.querySelector('.crt-lock-shackle');
+          const lockBody = opt.querySelector('.crt-lock-body');
+          if(globalProgress['page'+num]) {
+            // Open lock style
+            lockBody.style.background = 'linear-gradient(180deg,#bfffbf 60%,#0f0 100%)';
+            lockBody.style.borderColor = '#bfffbf';
+            lockBody.style.boxShadow = '0 0 8px #bfffbf,0 0 4px #0f0';
+            lockBody.style.position = 'relative';
+            lockBody.innerHTML = '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid #0f0;box-shadow:0 0 6px #bfffbf;"></div>';
+            lockShackle.style.transform = 'rotate(-25deg)';
+            lockShackle.style.borderColor = '#bfffbf';
+            lockShackle.style.borderBottom = 'none';
+            lockShackle.style.boxShadow = 'none';
+            lockShackle.style.animation = 'none';
+            lockBody.style.animation = 'none';
+          } else {
+            // Closed lock style
+            lockBody.style.background = 'transparent';
+            lockBody.style.borderColor = '#0f0';
+            lockBody.style.boxShadow = '0 0 4px #0f0';
+            lockBody.innerHTML = '';
+            lockShackle.style.transform = 'none';
+            lockShackle.style.borderColor = '#0f0';
+            lockShackle.style.borderBottom = '';
+            lockShackle.style.boxShadow = '';
+            lockShackle.style.animation = '';
+            lockBody.style.animation = '';
+          }
+        });
+      });
+      // --- Terminal ---
+      (() => {
+        const input = document.getElementById('terminal-input');
+        const output = document.getElementById('terminal-output');
+        let commandHistory = JSON.parse(localStorage.getItem('sharedTerminalHistory') || '[]');
+        function renderHistory() {
+          output.innerHTML = '';
+          commandHistory.forEach(item => {
+            const line = document.createElement('div');
+            line.className = 'terminal-line';
+            if(item.type === 'redirect') {
+              line.innerHTML = `<span class='redirect-msg'>&gt;&gt; ${item.text}</span>`;
+            } else {
+              line.textContent = `>> ${item.text}`;
+            }
+            output.appendChild(line);
+          });
+        }
+        renderHistory();
+        function addToHistory(text, type = 'cmd') {
+          if (!text) return; 
+          commandHistory.push({text, type});
+          if(commandHistory.length > 5) commandHistory.shift();
+          localStorage.setItem('sharedTerminalHistory', JSON.stringify(commandHistory));
+          renderHistory();
+        }
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const value = input.value.trim();
+            if (value !== "") {
+              addToHistory(value, 'cmd'); 
+              input.value = ""; 
+              fetch('/api/terminal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ command: value })
+              })
+              .then(r => r.json())
+              .then(res => {
+                if (res.type === 'clear') {
+                  commandHistory = [];
+                  try { localStorage.removeItem('sharedTerminalHistory'); } catch(e) { localStorage.setItem('sharedTerminalHistory', '[]'); }
+                  renderHistory();
+                  return;
+                }
+                if (res.type === 'redirect' && res.url && res.message !== 'not yet') {
+                  addToHistory(res.message || ('redirected to ' + res.url), 'redirect');
+                  setTimeout(() => { window.location.href = res.url; }, 700);
+                } else if (res.message === 'not yet') {
+                  addToHistory('not yet', 'redirect');
+                } else if (res.type === 'output') {
+                  addToHistory(res.message, 'redirect');
+                } else {
+                  addToHistory(res.message || 'invalid.', 'redirect');
+                }
+              })
+              .catch(() => {
+                addToHistory('Erreur serveur.', 'redirect');
+              });
+            }
+          }
+        });
+        commandHistory = commandHistory.filter(item => item.text !== 'Utilisez la commande cd dossierXX pour accéder à un dossier.');
+        localStorage.setItem('sharedTerminalHistory', JSON.stringify(commandHistory));
+        renderHistory();
+        document.querySelectorAll('.option').forEach(opt => opt.addEventListener('click', e => {
+          opt.classList.add('shake');
+          setTimeout(() => {
+            opt.classList.remove('shake');
+          }, 180);
+        }));
+      })();
+      // --- Timers under folders ---
+      (function() {
+        fetch('/api/timer_start').then((r) => r.json()).then(({start}) => {
+          const delays = [0,2,4,6,8,10,12,14];
+          document.querySelectorAll('.option').forEach((opt, idx) => {
+            let timerDiv = opt.querySelector('.dossier-timer');
+            if (!timerDiv) {
+              timerDiv = document.createElement('div');
+              timerDiv.className = 'dossier-timer';
+              timerDiv.style.fontSize = '1.1rem';
+              timerDiv.style.color = '#4ec3ff';
+              timerDiv.style.marginTop = '6px';
+              timerDiv.style.textShadow = '0 0 8px #4ec3ff';
+              opt.appendChild(timerDiv);
+            }
+            function updateTimer() {
+              const now = Date.now();
+              const delayMs = delays[idx]*24*60*60*1000;
+              const end = start + delayMs;
+              let diff = end - now;
+              if (diff <= 0) {
+                timerDiv.textContent = 'Débloqué';
+                timerDiv.style.color = '#0f0';
+                timerDiv.style.textShadow = '0 0 8px #0f0';
+              } else {
+                const d = Math.floor(diff/(24*60*60*1000));
+                const h = Math.floor((diff%(24*60*60*1000))/(60*60*1000));
+                const m = Math.floor((diff%(60*60*1000))/(60*1000));
+                const s = Math.floor((diff%(60*1000))/1000);
+                timerDiv.textContent = `${d}j ${h}h ${m}m ${s}s`;
+                timerDiv.style.color = '#4ec3ff';
+                timerDiv.style.textShadow = '0 0 8px #4ec3ff';
+              }
+            }
+            setInterval(updateTimer, 1000);
+            updateTimer();
+          });
+        });
+      })();
+      const style = document.createElement('style');
+      style.textContent = `.option.shake { animation: shake-lateral 0.18s linear; }
+  @keyframes shake-lateral {
+    0% { transform: translateX(0); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(8px); }
+    60% { transform: translateX(-6px); }
+    80% { transform: translateX(6px); }
+    100% { transform: translateX(0); }}`;
+      document.head.appendChild(style);
+      const canvas = document.getElementById('bg-anim');
+      const ctx = canvas.getContext('2d');
+      let w = window.innerWidth, h = window.innerHeight;
+      canvas.width = w; canvas.height = h;
+      let particles = Array.from({length: 40}, () => ({
+        x: Math.random()*w,
+        y: Math.random()*h,
+        r: Math.random()*1.5+0.5,
+        dx: (Math.random()-0.5)*0.2,
+        dy: (Math.random()-0.5)*0.2
+      }));
+      function drawParticles() {
+        ctx.clearRect(0,0,w,h);
+        for (const p of particles) {
+          ctx.beginPath();
+          ctx.arc(p.x,p.y,p.r,0,2*Math.PI);
+          ctx.fillStyle = 'rgba(0,255,0,0.18)';
+          ctx.shadowColor = '#0f0';
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          p.x += p.dx; p.y += p.dy;
+          if (p.x<0||p.x>w) p.dx*=-1;
+          if (p.y<0||p.y>h) p.dy*=-1;
+        }
+        requestAnimationFrame(drawParticles);
+      }
+      drawParticles();
+      window.addEventListener('resize',()=>{
+        w=window.innerWidth;h=window.innerHeight;canvas.width=w;canvas.height=h;
+      });
+      setInterval(() => {
+        if (Math.random() > 0.85) {
+          document.querySelector('.crt-monitor').classList.add('shake');
+          setTimeout(() => {
+            document.querySelector('.crt-monitor').classList.remove('shake');
+          }, 180);
+        }
+      }, 1200);
+      const garbageBase = 'klqhkldsfhnsdfnl';
+      function randomizeGarbage(base) {
+        let arr = base.split('');
+        for (let i = 0; i < arr.length; i++) {
+          if (Math.random() < 0.5) {
+            arr[i] = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+          }
+        }
+        return arr.join('');
+      }
+      setInterval(() => {
+        document.getElementById('random-garbage').textContent = randomizeGarbage(garbageBase);
+      }, 120);
+    </script>
+  </body>
+  </html>

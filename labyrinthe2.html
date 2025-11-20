@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Labyrinthe - Dossier 02</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <style>
+    body { background: #000; color: #0f0; font-family: 'VT323', monospace; margin:0; height:100vh; }
+    .crt-monitor { width:100vw; height:100vh; background:#001100; box-shadow:inset 0 0 100px #000a; display:flex; flex-direction:column; justify-content:center; align-items:center; position:relative; }
+    .center-content { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; }
+    .lab-container { position:relative; margin:40px auto; }
+    canvas { background: transparent; border:3px solid #0f0; box-shadow:0 0 24px #0f0a; display:block; }
+    .timer { color:#ffe14e; font-size:2rem; margin-top:18px; text-shadow:0 0 8px #ffe14e,0 0 12px #0f0; }
+    .msg { color:#4ec3ff; font-size:1.4rem; margin-top:18px; text-shadow:0 0 8px #4ec3ff; }
+    /* Barres latérales CRT */
+    .crt-side { position: fixed; top: 0; width: 140px; height: 100vh; z-index: 2; pointer-events: none; background: linear-gradient(180deg, rgba(0,255,0,0.08) 0%, rgba(0,255,0,0.13) 50%, rgba(0,255,0,0.08) 100%); box-shadow: 0 0 18px 2px #0f0a, 0 0 24px 0 #0f0a; opacity: 0.45; filter: blur(0.5px); overflow: hidden; transition: opacity 0.3s; animation: crt-glow 2.2s infinite alternate; }
+    .crt-side-left { left: 0; border-right: 2px solid #0f0; }
+    .crt-side-right { right: 0; border-left: 2px solid #0f0; }
+    @media (max-width: 1100px) { .crt-side { display: none; } }
+    @keyframes crt-glow { 0% { box-shadow: 0 0 8px 2px #0f0a, 0 0 16px 0 #0f0a; opacity: 0.35; } 100% { box-shadow: 0 0 24px 8px #0f0, 0 0 60px 0 #0f0a; opacity: 0.5; } }
+    body { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+    body.auth-ok { visibility: visible; opacity: 1; }
+  </style>
+  <script>
+    (async function() {
+      try {
+        const res = await fetch('/api/login', { method: 'GET', credentials: 'include' });
+        if (!res.ok) { window.location.href = 'index.html'; return; }
+        const data = await res.json();
+        if (!data.authenticated) {
+          window.location.href = 'index.html';
+        } else {
+          document.body.classList.add('auth-ok');
+        }
+      } catch (e) {
+        window.location.href = 'index.html';
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="crt-side crt-side-left"></div>
+  <div class="crt-side crt-side-right"></div>
+  <div class="crt-monitor">
+    <div class="center-content">
+      <div class="lab-container">
+        <canvas id="maze" width="900" height="700"></canvas>
+        <canvas id="trace" width="900" height="700" style="position:absolute;left:0;top:0;pointer-events:none;"></canvas>
+      </div>
+      <div class="timer" id="timer"></div>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+  <script>
+    // --- Maze generation ---
+    const COLS = 60, ROWS = 44, CELL = 15; 
+    let maze, start, end, solved = false, timer, timeLeft, timerInterval;
+    const canvas = document.getElementById('maze');
+    const ctx = canvas.getContext('2d');
+    const trace = document.getElementById('trace');
+    const tctx = trace.getContext('2d');
+    canvas.width = COLS * CELL;
+    canvas.height = ROWS * CELL;
+    trace.width = COLS * CELL;
+    trace.height = ROWS * CELL;
+    function shuffle(a) { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+    function genMaze() {
+      maze = Array.from({length:ROWS},()=>Array.from({length:COLS},()=>({v:false,w:[1,1,1,1]})));
+      let stack=[], cx=0, cy=0; maze[cy][cx].v=true; stack.push([cx,cy]);
+      let visitedOrder = Array.from({length:ROWS},()=>Array(COLS).fill(-1));
+      let visitCount = 0;
+      // DFS 
+      function leastVisitedDirs(x, y) {
+        let dirs = [0,1,2,3];
+        for (let i = dirs.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+        }
+        return dirs.sort((a,b)=>{
+          let nxA=x+(a==1)-(a==3), nyA=y+(a==2)-(a==0);
+          let nxB=x+(b==1)-(b==3), nyB=y+(b==2)-(b==0);
+          let va = (nxA>=0&&nyA>=0&&nxA<COLS&&nyA<ROWS)?visitedOrder[nyA][nxA]:Infinity;
+          let vb = (nxB>=0&&nyB>=0&&nxB<COLS&&nyB<ROWS)?visitedOrder[nyB][nxB]:Infinity;
+          return va-vb;
+        });
+      }
+      while(stack.length) {
+        let [x,y]=stack[stack.length-1], dirs=leastVisitedDirs(x,y), moved=false;
+        visitedOrder[y][x] = visitCount++;
+        for(let d of dirs) {
+          let nx=x+(d==1)-(d==3), ny=y+(d==2)-(d==0);
+          if(nx>=0&&ny>=0&&nx<COLS&&ny<ROWS&&!maze[ny][nx].v) {
+            maze[y][x].w[d]=0; maze[ny][nx].w[(d+2)%4]=0;
+            maze[ny][nx].v=true; stack.push([nx,ny]); moved=true; break;
+          }
+        }
+        if(!moved) stack.pop();
+      }
+  
+      start = {x:0, y:0};
+      end = {x:COLS-1, y:ROWS-1};
+      for(let i=0;i<Math.floor(COLS*ROWS*0.01);i++) {
+        let x=Math.floor(Math.random()*(COLS-1))+1, y=Math.floor(Math.random()*(ROWS-1))+1;
+        let d = Math.floor(Math.random()*4);
+        let nx=x+(d==1)-(d==3), ny=y+(d==2)-(d==0);
+        if(nx>0&&ny>0&&nx<COLS-1&&ny<ROWS-1) {
+          if(maze[y][x].w[d]===1 && maze[ny][nx].w[(d+2)%4]===1) {
+            maze[y][x].w[d]=0; maze[ny][nx].w[(d+2)%4]=0;
+          }
+        }
+      }
+    }
+    
+    function drawMaze() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.strokeStyle='#0f0'; ctx.lineWidth=1;
+      for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++) {
+        let c=maze[y][x];
+        let px=x*CELL, py=y*CELL;
+        if(c.w[0]){ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(px+CELL,py);ctx.stroke();}
+        if(c.w[1]){ctx.beginPath();ctx.moveTo(px+CELL,py);ctx.lineTo(px+CELL,py+CELL);ctx.stroke();}
+        if(c.w[2]){ctx.beginPath();ctx.moveTo(px+CELL,py+CELL);ctx.lineTo(px,py+CELL);ctx.stroke();}
+        if(c.w[3]){ctx.beginPath();ctx.moveTo(px,py+CELL);ctx.lineTo(px,py);ctx.stroke();}
+      }
+      // Start/end
+      ctx.fillStyle='#ffe14e'; ctx.beginPath(); ctx.arc(start.x*CELL+CELL/2,start.y*CELL+CELL/2,6,0,2*Math.PI); ctx.fill();
+      ctx.fillStyle='#ff4e4e'; ctx.beginPath(); ctx.arc(end.x*CELL+CELL/2,end.y*CELL+CELL/2,6,0,2*Math.PI); ctx.fill();
+    }
+    // --- Trace logic ---
+    let drawing=false, path=[], curCell=null;
+    function resetTrace() { tctx.clearRect(0,0,trace.width,trace.height); path=[]; drawing=false; curCell=null; }
+    canvas.addEventListener('mousedown',e=>{
+      if(solved) return;
+      const rect=canvas.getBoundingClientRect();
+      const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+      const sx=start.x*CELL+CELL/2, sy=start.y*CELL+CELL/2;
+      if(Math.hypot(mx-sx,my-sy)<16) {
+        drawing=true;
+        curCell = {x:start.x, y:start.y};
+        path = [[sx, sy]];
+        tctx.clearRect(0,0,trace.width,trace.height);
+      }
+    });
+    canvas.addEventListener('mousemove',e=>{
+      if(!drawing||solved||!curCell) return;
+      const rect=canvas.getBoundingClientRect();
+      const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+      let moved = false;
+      // Directions
+      const dirs = [
+        {dx:0,dy:-1,wall:0}, 
+        {dx:1,dy:0,wall:1},  
+        {dx:0,dy:1,wall:2},  
+        {dx:-1,dy:0,wall:3} 
+      ];
+      for(const d of dirs) {
+        const nx = curCell.x + d.dx, ny = curCell.y + d.dy;
+        if(nx<0||ny<0||nx>=COLS||ny>=ROWS) continue;
+        if(maze[curCell.y][curCell.x].w[d.wall]===0) {
+          const cx = nx*CELL+CELL/2, cy = ny*CELL+CELL/2;
+          const ccx = curCell.x*CELL+CELL/2, ccy = curCell.y*CELL+CELL/2;
+          if(Math.abs(mx-cx)+Math.abs(my-cy) < Math.abs(mx-ccx)+Math.abs(my-ccy)-8) {
+            let prev = path.length > 1 ? {
+              x: Math.round(path[path.length-2][0]/CELL-0.5),
+              y: Math.round(path[path.length-2][1]/CELL-0.5)
+            } : null;
+            if(prev && prev.x === nx && prev.y === ny) {
+              path.pop();
+              curCell = prev;
+              tctx.clearRect(0,0,trace.width,trace.height);
+              tctx.strokeStyle='#00ff00'; tctx.lineWidth=5; tctx.beginPath();
+              tctx.moveTo(path[0][0],path[0][1]);
+              for(let i=1;i<path.length;i++) tctx.lineTo(path[i][0],path[i][1]);
+              tctx.stroke();
+              return;
+            }
+            let deja = false;
+            for(let i=0;i<path.length;i++) {
+              let px = Math.round(path[i][0]/CELL-0.5);
+              let py = Math.round(path[i][1]/CELL-0.5);
+              if(px === nx && py === ny) { deja = true; break; }
+            }
+            if(deja) {
+              return;
+            }
+            curCell = {x:nx, y:ny};
+            path.push([cx, cy]);
+            moved = true;
+            break;
+          }
+        }
+      }
+      tctx.clearRect(0,0,trace.width,trace.height);
+      tctx.strokeStyle='#00ff00'; tctx.lineWidth=5; tctx.beginPath();
+      tctx.moveTo(path[0][0],path[0][1]);
+      for(let i=1;i<path.length;i++) tctx.lineTo(path[i][0],path[i][1]);
+      tctx.stroke();
+    });
+    window.addEventListener('mouseup',()=>{
+      if(!drawing||solved||!curCell) return;
+      drawing=false;
+      const ex=end.x, ey=end.y;
+      if(curCell.x===ex && curCell.y===ey && checkPath(path)) {
+        solved=true;
+        document.getElementById('msg').textContent = 'Access authorized.';
+        clearInterval(timerInterval);
+        fetch('/api/progress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ page: 2, solved: true })
+        }).finally(() => {
+          setTimeout(()=>{ window.location.href = 'page2.html'; }, 1200);
+        });
+      } else {
+        document.getElementById('msg').textContent = 'Invalid.';
+        setTimeout(()=>{ document.getElementById('msg').textContent=''; resetTrace(); }, 1200);
+      }
+    });
+    // --- Path validation ---
+    function checkPath(path) {
+      // check that all points are inside maze corridors 
+      for(let i=1;i<path.length;i++) {
+        let x0=path[i-1][0],y0=path[i-1][1],x1=path[i][0],y1=path[i][1];
+        let cx=Math.floor(x1/CELL), cy=Math.floor(y1/CELL);
+        if(cx<0||cy<0||cx>=COLS||cy>=ROWS) return false;
+        let prevCell=maze[Math.floor(y0/CELL)][Math.floor(x0/CELL)];
+        let curCell=maze[cy][cx];
+        if(Math.abs(cx-Math.floor(x0/CELL))+Math.abs(cy-Math.floor(y0/CELL))>1) return false;
+        if(cx>Math.floor(x0/CELL)&&prevCell.w[1]) return false;
+        if(cx<Math.floor(x0/CELL)&&prevCell.w[3]) return false;
+        if(cy>Math.floor(y0/CELL)&&prevCell.w[2]) return false;
+        if(cy<Math.floor(y0/CELL)&&prevCell.w[0]) return false;
+      }
+      return true;
+    }
+    // --- Timer ---
+    function startTimer() {
+      timeLeft=70;
+      document.getElementById('timer').textContent = 'Temps restant : 1:10';
+      timerInterval = setInterval(()=>{
+        timeLeft--;
+        let m=Math.floor(timeLeft/60), s=timeLeft%60;
+        document.getElementById('timer').textContent = `Temps restant : ${m}:${s.toString().padStart(2,'0')}`;
+        if(timeLeft<=0) {
+          clearInterval(timerInterval);
+          document.getElementById('msg').textContent = 'Temps écoulé.';
+          setTimeout(()=>{init();},1500);
+        }
+      },1000);
+    }
+    function init() {
+      solved=false;
+      genMaze();
+      drawMaze();
+      resetTrace();
+      clearInterval(timerInterval);
+      startTimer();
+      document.getElementById('msg').textContent = '';
+    }
+    init();
+  </script>
+</body>
+</html>

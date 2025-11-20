@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Labyrinthe - Dossier 02</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <style>
+    body { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+    body.auth-ok { visibility: visible; opacity: 1; }
+    body { background: #000; color: #0f0; font-family: 'VT323', monospace; margin:0; height:100vh; }
+    .crt-monitor { width:100vw; height:100vh; background:#001100; box-shadow:inset 0 0 100px #000a; display:flex; flex-direction:column; justify-content:center; align-items:center; position:relative; }
+    .center-content { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; }
+    .lab-container { position:relative; width:820px; height:620px; margin:40px auto; background:#000; border:3px solid #0f0; box-shadow:0 0 30px #0f0a; border-radius:18px; }
+    canvas { display:block; background:#111; border-radius:14px; }
+    .lab-info { color:#bfffbf; font-size:1.3rem; margin-bottom:18px; text-align:center; text-shadow:0 0 8px #0f0; }
+    .terminal-output { color:#0f0; font-size:1.3rem; margin-top:18px; min-height:32px; text-align:center; }
+    .terminal-output .redirect-msg { color: #4ec3ff; text-shadow: 0 0 8px #4ec3ff; font-weight: bold; }
+    /* Barres latérales CRT */
+    .crt-side { position: fixed; top: 0; width: 140px; height: 100vh; z-index: 2; pointer-events: none; background: linear-gradient(180deg, rgba(0,255,0,0.08) 0%, rgba(0,255,0,0.13) 50%, rgba(0,255,0,0.08) 100%); box-shadow: 0 0 18px 2px #0f0a, 0 0 24px 0 #0f0a; opacity: 0.45; filter: blur(0.5px); overflow: hidden; transition: opacity 0.3s; animation: crt-glow 2.2s infinite alternate; }
+    .crt-side-left { left: 0; border-right: 2px solid #0f0; }
+    .crt-side-right { right: 0; border-left: 2px solid #0f0; }
+    @media (max-width: 1100px) { .crt-side { display: none; } }
+    @keyframes crt-glow { 0% { box-shadow: 0 0 8px 2px #0f0a, 0 0 16px 0 #0f0a; opacity: 0.35; } 100% { box-shadow: 0 0 24px 8px #0f0, 0 0 60px 0 #0f0a; opacity: 0.5; } }
+  </style>
+  <script>
+    (async function() {
+      try {
+        const res = await fetch('/api/login', { method: 'GET', credentials: 'include' });
+        if (!res.ok) { window.location.href = 'index.html'; return; }
+        const data = await res.json();
+        if (!data.authenticated) {
+          window.location.href = 'index.html';
+        } else {
+          document.body.classList.add('auth-ok');
+        }
+      } catch (e) {
+        window.location.href = 'index.html';
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="crt-side crt-side-left"></div>
+  <div class="crt-side crt-side-right"></div>
+  <div class="crt-monitor">
+    <div class="center-content">
+      <div class="lab-container">
+        <canvas id="lab-canvas" width="800" height="600"></canvas>
+      </div>
+      <div id="lab-countdown" class="lab-info" style="margin-top:10px; color:#ffe14e; font-size:1.2rem; text-shadow:0 0 8px #ffe14e;">05:00</div>
+      <div id="lab-output" class="terminal-output"></div>
+    </div>
+  </div>
+  <script>
+    // Polar maze parameters
+    const innerRadius = 4;
+    const rings = 20, sectors = 40, cellR = 12;
+    const radius = (rings + innerRadius) * cellR;
+    function generateCircularMaze(rings, sectors) {
+      const maze = Array.from({length:rings}, (_,r)=>
+        Array.from({length:sectors}, (_,t)=>(
+          { walls: [true, true, true, true], visited: false }
+        ))
+      );
+      function shuffle(a) { for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+      function carve(r, t) {
+        maze[r][t].visited = true;
+        let dirs = shuffle([
+          [0,1,1,0], 
+          [0,-1,0,1],  
+          [1,0,3,2],   
+          [-1,0,2,3]   
+        ]);
+        for(const [dr,dt,wall,opp] of dirs) {
+          let nr=r+dr, nt=(t+dt+sectors)%sectors;
+          if(nr>=0&&nr<rings&&!maze[nr][nt].visited) {
+            maze[r][t].walls[wall]=false;
+            maze[nr][nt].walls[opp]=false;
+            carve(nr,nt);
+          }
+        }
+      }
+      carve(rings-1, Math.floor(sectors/2));
+      maze[rings-1][Math.floor(sectors/2)].start = true;
+      maze[0][0].end = true;
+      return maze;
+    }
+    let maze = generateCircularMaze(rings,sectors);
+    const canvas = document.getElementById('lab-canvas');
+    canvas.width = 2*radius+120;
+    canvas.height = 2*radius+120;
+    let centerX = canvas.width/2;
+    let centerY = canvas.height/2;
+    const labContainer = document.querySelector('.lab-container');
+    labContainer.style.width = (canvas.width + 20) + 'px';
+    labContainer.style.height = (canvas.height + 20) + 'px';
+    labContainer.style.display = 'flex';
+    labContainer.style.alignItems = 'center';
+    labContainer.style.justifyContent = 'center';
+    canvas.style.margin = '0 auto';
+    const ctx = canvas.getContext('2d');
+    // start and end cells
+    let startCell = {r:rings-1, t:Math.floor(sectors/2)}, endCell={r:0, t:0};
+    let drawing=false, path=[];
+    let countdown = 300, countdownInterval = null;
+    let mazeRotation = 0;
+    let mazeRotationSpeed = 0;
+    let mazeRotationInitialSpeed = 0.0005; // base speed
+    let mazeRotationElapsed = 0; 
+    function updateTimer() {
+      const min = Math.floor(timer/60).toString().padStart(2,'0');
+      const sec = (timer%60).toString().padStart(2,'0');
+      document.getElementById('lab-timer').textContent = `${min}:${sec}`;
+    }
+    function startTimer() {
+      timer = 0;
+      updateTimer();
+      if(timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(()=>{ timer++; updateTimer(); }, 1000);
+    }
+    function stopTimer() {
+      if(timerInterval) clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    function updateCountdown() {
+      const min = Math.floor(countdown/60).toString().padStart(2,'0');
+      const sec = (countdown%60).toString().padStart(2,'0');
+      document.getElementById('lab-countdown').textContent = `${min}:${sec}`;
+      // Rotation after 10s
+      if (countdown === 290 && mazeRotationSpeed === 0) {
+        mazeRotationSpeed = mazeRotationInitialSpeed;
+        mazeRotationElapsed = 0;
+      }
+    }
+    function startCountdown() {
+      countdown = 300;
+      updateCountdown();
+      if(countdownInterval) clearInterval(countdownInterval);
+      countdownInterval = setInterval(()=>{
+        countdown--;
+        updateCountdown();
+        // Progressive acceleration of rotation
+        if (mazeRotationSpeed > 0) {
+          mazeRotationElapsed++;
+          // Every 10s after the start of rotation, increase speed by 1/10 of initial speed, no maximum
+          let increments = Math.floor(mazeRotationElapsed / 10);
+          mazeRotationSpeed = mazeRotationInitialSpeed * (1 + increments);
+        }
+        if(countdown <= 0) {
+          clearInterval(countdownInterval);
+          drawing = false;
+          document.getElementById('lab-output').textContent = 'Times up.';
+          setTimeout(newMaze, 1200);
+        }
+      }, 1000);
+    }
+    function stopCountdown() {
+      if(countdownInterval) clearInterval(countdownInterval);
+      countdownInterval = null; 
+      mazeRotationSpeed = 0;
+      mazeRotationStep = 0;
+    }
+    function polarToXY(r, t, rotation = mazeRotation) {
+      const angle = (2*Math.PI*t)/sectors + rotation;
+      return [centerX + (r+innerRadius)*cellR*Math.cos(angle), centerY + (r+innerRadius)*cellR*Math.sin(angle)];
+    }
+    function drawMaze() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(mazeRotation);
+      ctx.translate(-centerX, -centerY);
+      for(let r=0;r<rings;r++) for(let t=0;t<sectors;t++) {
+        const cell = maze[r][t];
+        let a0 = (2*Math.PI*t)/sectors, a1 = (2*Math.PI*(t+1))/sectors;
+        let r0 = (r+innerRadius)*cellR, r1 = (r+1+innerRadius)*cellR;
+        if(cell.walls[0]) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(centerX + r0*Math.cos(a0), centerY + r0*Math.sin(a0));
+          ctx.lineTo(centerX + r1*Math.cos(a0), centerY + r1*Math.sin(a0));
+          ctx.strokeStyle = '#222';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.restore();
+        }
+        if(cell.walls[1]) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(centerX + r0*Math.cos(a1), centerY + r0*Math.sin(a1));
+          ctx.lineTo(centerX + r1*Math.cos(a1), centerY + r1*Math.sin(a1));
+          ctx.strokeStyle = '#222';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.restore();
+        }
+        if(cell.walls[2]) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(centerX,centerY,r0,a0,a1,false);
+          ctx.strokeStyle = '#222';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.restore();
+        }
+        if(cell.walls[3]) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(centerX,centerY,r1,a0,a1,false);
+          ctx.strokeStyle = '#222';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      // start
+      let [sx,sy] = polarToXY(startCell.r+0.5, startCell.t, 0);
+      ctx.save();
+      ctx.shadowColor = '#4ec3ff';
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.arc(sx, sy, cellR*0.45, 0, 2*Math.PI);
+      ctx.fillStyle = '#4ec3ff';
+      ctx.fill();
+      ctx.restore();
+      // end
+      let [ex,ey] = polarToXY(endCell.r+0.5, endCell.t, 0);
+      ctx.save();
+      ctx.shadowColor = '#ff4eb3';
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.arc(ex, ey, cellR*0.45, 0, 2*Math.PI);
+      ctx.fillStyle = '#ff4eb3';
+      ctx.fill();
+      ctx.restore();
+      // Green line following the mouse
+      if (path.length > 1) {
+        ctx.restore(); 
+        ctx.save();
+        let lastScreenPoint = path[path.length - 1];
+        ctx.beginPath();
+        ctx.arc(lastScreenPoint[0], lastScreenPoint[1], 4, 0, 2 * Math.PI);
+        ctx.fillStyle = '#0f0';
+        ctx.shadowColor = '#0f0';
+        ctx.shadowBlur = 7;
+        ctx.fill();
+        ctx.restore();
+
+        // Collision detection: compare the polar cell of the green point with the previous and current rotation
+        let dx = lastScreenPoint[0] - centerX;
+        let dy = lastScreenPoint[1] - centerY;
+        let r = Math.sqrt(dx*dx + dy*dy);
+        // Polar cell with the current rotation
+        let t_now = Math.atan2(dy, dx) - mazeRotation;
+        if (t_now < 0) t_now += 2 * Math.PI;
+        let ring_now = Math.floor((r - innerRadius * cellR) / cellR);
+        let sector_now = Math.floor((t_now * sectors) / (2 * Math.PI));
+        // Polar cell with the previous rotation
+        let ring_prev = ring_now, sector_prev = sector_now;
+        if (lastPolarRotation !== null) {
+          let t_prev = Math.atan2(dy, dx) - lastPolarRotation;
+          if (t_prev < 0) t_prev += 2 * Math.PI;
+          ring_prev = Math.floor((r - innerRadius * cellR) / cellR);
+          sector_prev = Math.floor((t_prev * sectors) / (2 * Math.PI));
+        }
+        if (ring_now >= 0 && ring_now < rings && sector_now >= 0 && sector_now < sectors &&
+            ring_prev >= 0 && ring_prev < rings && sector_prev >= 0 && sector_prev < sectors) {
+          if (ring_now !== ring_prev || sector_now !== sector_prev) {
+            let dr = ring_now - ring_prev;
+            let dt = (sector_now - sector_prev + sectors) % sectors;
+            let collision = false;
+            if (dr === 0 && dt === 1 && maze[ring_prev][sector_prev].walls[1]) collision = true;
+            if (dr === 0 && dt === sectors - 1 && maze[ring_prev][sector_prev].walls[0]) collision = true;
+            if (dr === 1 && dt === 0 && maze[ring_prev][sector_prev].walls[3]) collision = true;
+            if (dr === -1 && dt === 0 && maze[ring_prev][sector_prev].walls[2]) collision = true;
+            if (collision && drawing) {
+              drawing = false;
+              document.getElementById('lab-output').textContent = 'Invalid.';
+              stopCountdown();
+              countdown = 0;
+              mazeRotationSpeed = 0;
+              updateCountdown();
+              setTimeout(() => {
+                const newGen = generateCircularMaze(rings, sectors);
+                for(let r=0;r<rings;r++) for(let t=0;t<sectors;t++) maze[r][t]=newGen[r][t];
+                let foundStart = false, foundEnd = false;
+                for(let r=0;r<rings;r++) {
+                  for(let t=0;t<sectors;t++) {
+                    if (maze[r][t].start) { startCell = {r, t}; foundStart = true; }
+                    if (maze[r][t].end) { endCell = {r, t}; foundEnd = true; }
+                  }
+                }
+                if (!foundStart) startCell = {r:rings-1, t:Math.floor(sectors/2)};
+                if (!foundEnd) endCell = {r:0, t:0};
+                mazeRotation = 0;
+                path = [];
+                drawing = false;
+                lastCell = null;
+                lastPolarCell = null;
+                lastPolarRotation = null;
+                document.getElementById('lab-output').textContent = '';
+                stopCountdown();
+                mazeRotationSpeed = 0;
+                updateCountdown();
+                drawMaze();
+              }, 900);
+              drawMaze();
+              return;
+            }
+          }
+        }
+        lastPolarCell = {r: ring_now, t: sector_now};
+        lastPolarRotation = mazeRotation;
+      }
+      ctx.restore(); 
+      
+    }
+   
+    function cellFromXY(mx, my) {
+  let dx = mx - centerX, dy = my - centerY;
+  let r = Math.sqrt(dx * dx + dy * dy);
+  let t = Math.atan2(dy, dx) - mazeRotation;
+  if (t < 0) t += 2 * Math.PI;
+  let ring = Math.floor((r - innerRadius * cellR) / cellR);
+  let sector = Math.floor((t * sectors) / (2 * Math.PI));
+  return { r: ring, t: sector };
+}
+
+    function isOnPath(r,t,pr,pt) {
+      if(r === pr && t === pt) return true;
+      if(!maze[r]||!maze[r][t]) return false;
+      if(pr==null||pt==null) return true;
+      let dr = r-pr, dt = (t-pt+sectors)%sectors;
+      if(dr===0&&dt===1) return !maze[pr][pt].walls[1]; 
+      if(dr===0&&dt===sectors-1) return !maze[pr][pt].walls[0];
+      if(dr===1&&dt===0) return !maze[pr][pt].walls[3]; 
+      if(dr===-1&&dt===0) return !maze[pr][pt].walls[2]; 
+      return false;
+    }
+    function isAtEnd(r,t) {
+      return r===endCell.r&&t===endCell.t;
+    }
+    function animate() {
+      if (mazeRotationSpeed > 0) mazeRotation += mazeRotationSpeed;
+      drawMaze();
+      requestAnimationFrame(animate);
+    }
+    animate();
+    canvas.addEventListener('mousedown',e=>{
+      const rect=canvas.getBoundingClientRect();
+      const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+      const c=cellFromXY(mx,my);
+      if(c.r === startCell.r && c.t === startCell.t) {
+        drawing=true;
+        path = [polarToXY(c.r+0.5, c.t), [mx, my]];
+        lastCell = {r:c.r, t:c.t};
+        document.getElementById('lab-output').textContent='';
+        drawMaze();
+        startCountdown();
+      }
+    });
+    canvas.addEventListener('mousemove',e=>{
+      if(!drawing) return;
+      const rect=canvas.getBoundingClientRect();
+      const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+      const c=cellFromXY(mx,my);
+      if(c.r < 0 || c.r >= rings || c.t < 0 || c.t >= sectors) return;
+      if(!isOnPath(c.r,c.t,lastCell?.r,lastCell?.t)) {
+        drawing=false;
+        document.getElementById('lab-output').textContent='Invalid.';
+        stopCountdown();
+        countdown = 0;
+        mazeRotationSpeed = 0;
+        updateCountdown();
+        setTimeout(() => {
+          // Regenerate maze and reposition start/end
+          const newGen = generateCircularMaze(rings, sectors);
+          for(let r=0;r<rings;r++) for(let t=0;t<sectors;t++) maze[r][t]=newGen[r][t];
+          let foundStart = false, foundEnd = false;
+          for(let r=0;r<rings;r++) {
+            for(let t=0;t<sectors;t++) {
+              if (maze[r][t].start) { startCell = {r, t}; foundStart = true; }
+              if (maze[r][t].end) { endCell = {r, t}; foundEnd = true; }
+            }
+          }
+          if (!foundStart) startCell = {r:rings-1, t:Math.floor(sectors/2)};
+          if (!foundEnd) endCell = {r:0, t:0};
+          mazeRotation = 0; 
+          path = [];
+          drawing = false;
+          lastCell = null;
+          document.getElementById('lab-output').textContent = '';
+          stopCountdown();
+          mazeRotationSpeed = 0;
+          updateCountdown();
+          drawMaze();
+        }, 900);
+        drawMaze();
+        return;
+      }
+      path.push([mx, my]);
+      if(c.r !== lastCell.r || c.t !== lastCell.t) {
+        lastCell = {r:c.r, t:c.t};
+      }
+      drawMaze();
+      if(isAtEnd(c.r,c.t)) {
+        drawing=false;
+        document.getElementById('lab-output').innerHTML='<span class="redirect-msg">Accès autorisé.</span>';
+        stopCountdown();
+        fetch('/api/progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ page: 'page8', solved: true })
+            }).then(() => {
+              setTimeout(()=>{ window.location.href = 'page8.html'; }, 900);
+            });
+      }
+    });
+    window.addEventListener('mouseup',()=>{
+      if(drawing){
+        drawing=false;
+        document.getElementById('lab-output').textContent='Invalid.';
+        stopCountdown();
+        countdown = 0;
+        mazeRotationSpeed = 0;
+        updateCountdown();
+        setTimeout(() => {
+          // Regenerate maze and reposition start/end
+          const newGen = generateCircularMaze(rings, sectors);
+          for(let r=0;r<rings;r++) for(let t=0;t<sectors;t++) maze[r][t]=newGen[r][t];
+          let foundStart = false, foundEnd = false;
+          for(let r=0;r<rings;r++) {
+            for(let t=0;t<sectors;t++) {
+              if (maze[r][t].start) { startCell = {r, t}; foundStart = true; }
+              if (maze[r][t].end) { endCell = {r, t}; foundEnd = true; }
+            }
+          }
+          if (!foundStart) startCell = {r:rings-1, t:Math.floor(sectors/2)};
+          if (!foundEnd) endCell = {r:0, t:0};
+          mazeRotation = 0; 
+          path = [];
+          drawing = false;
+          lastCell = null;
+          document.getElementById('lab-output').textContent = '';
+          stopCountdown();
+          mazeRotationSpeed = 0;
+          updateCountdown();
+          drawMaze();
+        }, 900);
+        drawMaze();
+      }
+    });
+    // Initiate countdown 
+    updateCountdown();
+    drawMaze();
+    function newMaze() {
+      const newGen = generateCircularMaze(rings, sectors);
+      for(let r=0;r<rings;r++) for(let t=0;t<sectors;t++) maze[r][t]=newGen[r][t];
+      let foundStart = false, foundEnd = false;
+      for(let r=0;r<rings;r++) {
+        for(let t=0;t<sectors;t++) {
+          if (maze[r][t].start) { startCell = {r, t}; foundStart = true; }
+          if (maze[r][t].end) { endCell = {r, t}; foundEnd = true; }
+        }
+      }
+      if (!foundStart) startCell = {r:rings-1, t:Math.floor(sectors/2)};
+      if (!foundEnd) endCell = {r:0, t:0};
+      mazeRotation = 0; 
+      path = [];
+      drawing = false;
+      lastCell = null;
+      document.getElementById('lab-output').textContent = '';
+      stopCountdown();
+      mazeRotationSpeed = 0; 
+      mazeRotationElapsed = 0; 
+      lastPolarCell = null;
+      lastPolarRotation = null;
+      updateCountdown();
+      drawMaze();
+    }
+    let lastCell = null;
+    let lastPolarCell = null; 
+    let lastPolarRotation = null; 
+    newMaze();
+  </script>
+</body>
+</html>

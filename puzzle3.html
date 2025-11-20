@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Puzzle Rectangle - Dossier 03</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <style>
+    body { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+    body.auth-ok { visibility: visible; opacity: 1; }
+    body { background: #000; color: #0f0; font-family: 'VT323', monospace; margin:0; height:100vh; }
+    .crt-monitor { width:100vw; height:100vh; background:#001100; box-shadow:inset 0 0 100px #000a; display:flex; flex-direction:column; justify-content:center; align-items:center; position:relative; }
+    .center-content { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; }
+    .puzzle-container { position:relative; margin:40px auto; }
+    .puzzle-board { background: #111; border:3px solid #0f0; box-shadow:0 0 24px #0f0a; display:grid; grid-template-columns: repeat(5, 60px); grid-template-rows: repeat(4, 60px); gap:2px; }
+    .piece { width:60px; height:60px; background:#4ec3ff; border:2px solid #0f0; box-sizing:border-box; cursor:grab; display:flex; align-items:center; justify-content:center; font-size:2rem; user-select:none; transition:box-shadow 0.2s; }
+    .piece.dragging { opacity:0.7; box-shadow:0 0 16px #ffe14e; }
+    .msg { color:#ffe14e; font-size:1.4rem; margin-top:18px; text-shadow:0 0 8px #ffe14e; }
+    .piece.movable { cursor: pointer !important; border-color: #ffe14e !important; }
+    .crt-side { position: fixed; top: 0; width: 140px; height: 100vh; z-index: 2; pointer-events: none; background: linear-gradient(180deg, rgba(0,255,0,0.08) 0%, rgba(0,255,0,0.13) 50%, rgba(0,255,0,0.08) 100%); box-shadow: 0 0 18px 2px #0f0a, 0 0 24px 0 #0f0a; opacity: 0.45; filter: blur(0.5px); overflow: hidden; transition: opacity 0.3s; animation: crt-glow 2.2s infinite alternate; }
+    .crt-side-left { left: 0; border-right: 2px solid #0f0; }
+    .crt-side-right { right: 0; border-left: 2px solid #0f0; }
+    @media (max-width: 1100px) { .crt-side { display: none; } }
+    @keyframes crt-glow { 0% { box-shadow: 0 0 8px 2px #0f0a, 0 0 16px 0 #0f0a; opacity: 0.35; } 100% { box-shadow: 0 0 24px 8px #0f0, 0 0 60px 0 #0f0a; opacity: 0.5; } }
+  </style>
+  <script>
+  // Protected page - check authentication
+  (async function() {
+    try {
+      const res = await fetch('/api/login', { method: 'GET', credentials: 'include' });
+      if (!res.ok) { window.location.href = 'index.html'; return; }
+      const data = await res.json();
+      if (!data.authenticated) {
+        window.location.href = 'index.html';
+      } else {
+        document.body.classList.add('auth-ok');
+      }
+    } catch (e) {
+      window.location.href = 'index.html';
+    }
+  })();
+  </script>
+</head>
+<body>
+  <div class="crt-side crt-side-left"></div>
+  <div class="crt-side crt-side-right"></div>
+  <div class="crt-monitor">
+    <div class="center-content">
+      <div class="puzzle-container">
+        <div id="board" class="puzzle-board"></div>
+      </div>
+      <div id="timer" style="color:#ffe14e; font-size:1.2rem; margin:18px 0 0 0; text-shadow:0 0 8px #ffe14e;"></div>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+  <script>
+    // --- Puzzle logic ---
+    const ROWS = 4, COLS = 5, PIECES = ROWS * COLS;
+    const EMPTY_ORIGIN_INDEX = PIECES - 1;
+    let board = document.getElementById('board');
+    let msg = document.getElementById('msg');
+    const IMAGE_SRC = 'assets/crt_puzzle.svg';
+    const imgPreview = document.createElement('img');
+    imgPreview.src = IMAGE_SRC;
+    imgPreview.alt = 'Aperçu du puzzle';
+    imgPreview.style.display = 'block';
+    imgPreview.style.margin = '0 auto 18px auto';
+    imgPreview.style.border = '2px solid #ffe14e';
+    imgPreview.style.background = '#222';
+    imgPreview.style.width = (COLS*60)+'px';
+    imgPreview.style.height = (ROWS*60)+'px';
+    document.querySelector('.center-content').insertBefore(imgPreview, document.querySelector('.puzzle-container'));
+
+    if(imgPreview && imgPreview.parentNode) imgPreview.parentNode.removeChild(imgPreview);
+
+    const canvasRef = document.createElement('canvas');
+    canvasRef.width = COLS * 60;
+    canvasRef.height = ROWS * 60;
+    canvasRef.style.display = 'block';
+    canvasRef.style.margin = '0 auto 18px auto';
+    canvasRef.style.border = '2px solid #ffe14e';
+    canvasRef.style.background = '#222';
+    document.querySelector('.center-content').insertBefore(canvasRef, document.querySelector('.puzzle-container'));
+    const ctx = canvasRef.getContext('2d');
+    let grad = ctx.createRadialGradient(
+      canvasRef.width/2, canvasRef.height/2, 20,
+      canvasRef.width/2, canvasRef.height/2, Math.max(canvasRef.width, canvasRef.height)/1.2
+    );
+    grad.addColorStop(0, '#003300');
+    grad.addColorStop(0.5, '#001a00');
+    grad.addColorStop(1, '#000');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,canvasRef.width,canvasRef.height);
+    ctx.save();
+    ctx.globalAlpha = 0.13;
+    ctx.fillStyle = '#0f0';
+    for(let y=0; y<canvasRef.height; y+=4) {
+      ctx.fillRect(0, y, canvasRef.width, 2);
+    }
+    ctx.restore();
+    function drawSinLine(seed, color, width, alpha, freq, amp, phase) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      for(let x=0;x<=canvasRef.width;x+=1) {
+        let y = canvasRef.height/2 + Math.sin((x/freq)+phase+seed)*amp + Math.cos((x/(freq*0.7))-seed)*amp/2;
+        if(x===0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8;
+      ctx.stroke();
+      ctx.restore();
+    }
+    drawSinLine(0, '#39ff14', 3, 0.7, 28, 60, 0);
+    drawSinLine(1, '#0f0', 2, 0.5, 18, 40, 1.2);
+    drawSinLine(2, '#00ff99', 1.2, 0.4, 12, 30, 2.5);
+    drawSinLine(3, '#0f0', 1, 0.25, 8, 18, 3.7);
+    for(let i=0;i<18;i++) {
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      let x = Math.random()*canvasRef.width;
+      let y = Math.random()*canvasRef.height;
+      ctx.arc(x, y, 2+Math.random()*2, 0, 2*Math.PI);
+      ctx.fillStyle = '#baffc9';
+      ctx.shadowColor = '#0f0';
+      ctx.shadowBlur = 12;
+      ctx.fill();
+      ctx.restore();
+    }
+    for(let i=0; i<canvasRef.width*canvasRef.height/32; i++) {
+      ctx.save();
+      ctx.globalAlpha = 0.10 + Math.random()*0.10;
+      ctx.fillStyle = Math.random() > 0.5 ? '#39ff14' : '#0f0';
+      let x = Math.random()*canvasRef.width;
+      let y = Math.random()*canvasRef.height;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.random()*0.7+0.3, 0, 2*Math.PI);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle = '#000';
+    ctx.fillRect((COLS-1)*60, (ROWS-1)*60, 60, 60);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#ffe14e';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([6,4]);
+    ctx.strokeRect((COLS-1)*60+2, (ROWS-1)*60+2, 56, 56);
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    function seededRandom(seed) {
+      let x = Math.sin(seed) * 10000;
+      return x - Math.floor(x);
+    }
+    function generateCRTImage(seed) {
+      ctx.clearRect(0, 0, canvasRef.width, canvasRef.height);
+      let grad = ctx.createRadialGradient(
+        canvasRef.width/2, canvasRef.height/2, 20,
+        canvasRef.width/2, canvasRef.height/2, Math.max(canvasRef.width, canvasRef.height)/1.2
+      );
+      grad.addColorStop(0, '#003300');
+      grad.addColorStop(0.5, '#001a00');
+      grad.addColorStop(1, '#000');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0,0,canvasRef.width,canvasRef.height);
+      ctx.save();
+      ctx.globalAlpha = 0.13;
+      ctx.fillStyle = '#0f0';
+      for(let y=0; y<canvasRef.height; y+=4) {
+        ctx.fillRect(0, y, canvasRef.width, 2);
+      }
+      ctx.restore();
+      function drawSinLine(seed2, color, width, alpha, freq, amp, phase) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        for(let x=0;x<=canvasRef.width;x+=1) {
+          let y = canvasRef.height/2 + Math.sin((x/freq)+phase+seed2+seed)*amp + Math.cos((x/(freq*0.7))-seed2-seed)*amp/2;
+          if(x===0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 8;
+        ctx.stroke();
+        ctx.restore();
+      }
+      drawSinLine(0, '#39ff14', 3, 0.7, 28, 60, 0.2*seed);
+      drawSinLine(1, '#0f0', 2, 0.5, 18, 40, 1.2+0.3*seed);
+      drawSinLine(2, '#00ff99', 1.2, 0.4, 12, 30, 2.5-0.2*seed);
+      drawSinLine(3, '#0f0', 1, 0.25, 8, 18, 3.7+0.1*seed);
+      let pointSeed = seed + 1234.567;
+      for(let i=0;i<18;i++) {
+        ctx.save();
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        pointSeed += 31.415 * (i+1);
+        let rx = seededRandom(pointSeed);
+        pointSeed += 13.37;
+        let ry = seededRandom(pointSeed);
+        let x = rx * canvasRef.width;
+        let y = ry * canvasRef.height;
+        ctx.arc(x, y, 2+seededRandom(pointSeed+7)*2, 0, 2*Math.PI);
+        ctx.fillStyle = '#baffc9';
+        ctx.shadowColor = '#0f0';
+        ctx.shadowBlur = 12;
+        ctx.fill();
+        ctx.restore();
+      }
+      for(let i=0; i<canvasRef.width*canvasRef.height/32; i++) {
+        ctx.save();
+        ctx.globalAlpha = 0.10 + Math.random()*0.10;
+        ctx.fillStyle = Math.random() > 0.5 ? '#39ff14' : '#0f0';
+        let x = Math.random()*canvasRef.width;
+        let y = Math.random()*canvasRef.height;
+        ctx.beginPath();
+        ctx.arc(x, y, Math.random()*0.7+0.3, 0, 2*Math.PI);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.82;
+      ctx.fillStyle = '#000';
+      ctx.fillRect((COLS-1)*60, (ROWS-1)*60, 60, 60);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#ffe14e';
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([6,4]);
+      ctx.strokeRect((COLS-1)*60+2, (ROWS-1)*60+2, 56, 56);
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    let currentSeed = Math.random()*10000;
+    generateCRTImage(currentSeed);
+    function initPuzzle() {
+      while(board.firstChild) board.removeChild(board.firstChild);
+      let pieces = [];
+      for(let i=0;i<PIECES;i++) {
+        let div = document.createElement('div');
+        div.className = 'piece';
+        div.draggable = false;
+        div.dataset.index = i;
+        let row = Math.floor(i/COLS), col = i%COLS;
+        if(i !== EMPTY_ORIGIN_INDEX) {
+          let tile = document.createElement('canvas');
+          tile.width = 60;
+          tile.height = 60;
+          let tctx = tile.getContext('2d');
+          tctx.drawImage(canvasRef, col*60, row*60, 60, 60, 0, 0, 60, 60);
+          div.style.backgroundImage = `url('${tile.toDataURL()}')`;
+          div.style.backgroundSize = '60px 60px';
+          div.style.backgroundPosition = '0px 0px';
+          div.style.backgroundRepeat = 'no-repeat';
+        } else {
+          div.style.background = 'none';
+          div.style.border = '2px dashed #222';
+        }
+        pieces.push(div);
+      }
+      pieces = shuffle(pieces);
+      pieces.forEach(p=>board.appendChild(p));
+      for(let i=0;i<PIECES;i++) {
+        if(board.children[i].dataset.index == EMPTY_ORIGIN_INDEX) {
+          board.children[i].classList.add('empty');
+          board.children[i].style.background = 'none';
+          board.children[i].style.border = '2px dashed #222';
+        } else {
+          board.children[i].classList.remove('empty');
+        }
+      }
+      updateMovable();
+    }
+
+    function shuffle(a) {
+      let arr = a.slice();
+      for(let i=arr.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]];}
+      return arr;
+    }
+    function updateMovable() {
+      const emptyIdx = Array.from(board.children).findIndex(el=>el.classList.contains('empty'));
+      for(let i=0;i<PIECES;i++) {
+        if (!board.children[i]) continue;
+        board.children[i].classList.remove('movable');
+        if(i === emptyIdx) continue;
+        let row1 = Math.floor(i/COLS), col1 = i%COLS;
+        let row2 = Math.floor(emptyIdx/COLS), col2 = emptyIdx%COLS;
+        if((Math.abs(row1-row2)===1 && col1===col2) || (Math.abs(col1-col2)===1 && row1===row2)) {
+          board.children[i].classList.add('movable');
+        }
+      }
+    }
+
+    // Game logic
+    board.addEventListener('click',e=>{
+      const piece = e.target.closest('.piece');
+      if (!piece || piece.parentNode !== board) return;
+      let idx = Array.from(board.children).indexOf(piece);
+      if(idx === -1 || board.children[idx].classList.contains('empty')) return;
+      let emptyIdx = Array.from(board.children).findIndex(el=>el.classList.contains('empty'));
+      let row1 = Math.floor(idx/COLS), col1 = idx%COLS;
+      let row2 = Math.floor(emptyIdx/COLS), col2 = emptyIdx%COLS;
+      if((Math.abs(row1-row2)===1 && col1===col2) || (Math.abs(col1-col2)===1 && row1===row2)) {
+        const pieceNode = board.children[idx];
+        const emptyNode = board.children[emptyIdx];
+        board.replaceChild(pieceNode, emptyNode);
+        board.insertBefore(emptyNode, board.children[idx]);
+        updateMovable();
+        checkWin();
+      }
+    });
+    function checkWin() {
+      let ok = true;
+      for(let i=0;i<PIECES;i++) {
+        if(board.children[i].dataset.index != i) { ok = false; break; }
+      }
+      if(ok) {
+        msg.textContent = 'Access authorized.';
+        // API call
+        fetch('/api/progress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ page: 'page3', solved: true })
+        });
+        setTimeout(()=>{ window.location.href = 'page3.html'; }, 1200);
+      }
+    }
+    let timerDiv = document.createElement('div');
+    timerDiv.id = 'timer';
+    timerDiv.style.color = '#ffe14e';
+    timerDiv.style.fontSize = '1.2rem';
+    timerDiv.style.margin = '18px 0 0 0';
+    timerDiv.style.textShadow = '0 0 8px #ffe14e';
+    const puzzleContainer = document.querySelector('.puzzle-container');
+    puzzleContainer.parentNode.insertBefore(timerDiv, puzzleContainer.nextSibling);
+    let timeLeft = 600; 
+    let timerInterval;
+    function updateTimer() {
+      let min = Math.floor(timeLeft/60).toString().padStart(2,'0');
+      let sec = (timeLeft%60).toString().padStart(2,'0');
+      timerDiv.textContent = `Temps restant : ${min}:${sec}`;
+      if(timeLeft <= 0) {
+        remelangerPuzzle();
+        timeLeft = 600;
+      }
+    }
+    function startTimer() {
+      clearInterval(timerInterval);
+      updateTimer();
+      timerInterval = setInterval(()=>{
+        timeLeft--;
+        updateTimer();
+      }, 1000);
+    }
+    function remelangerPuzzle() {
+      currentSeed = Math.random()*10000;
+      generateCRTImage(currentSeed);
+      initPuzzle();
+    }
+    startTimer();
+    updateMovable();
+    initPuzzle();
+  </script>
+</body>
+</html>

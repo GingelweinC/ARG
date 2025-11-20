@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tusmo CRT - Dossier 05</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <style>
+    body { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+    body.auth-ok { visibility: visible; opacity: 1; }
+    .crt-monitor { width:100vw; height:100vh; background:#001100; box-shadow:inset 0 0 100px #000a; display:flex; flex-direction:column; justify-content:center; align-items:center; position:relative; }
+    .center-content { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; }
+    .tusmo-board { display:grid; grid-template-rows: repeat(6, 1fr); gap:7px; margin:40px 0 18px 0; }
+    .tusmo-row { display:flex; gap:5px; }
+    .tusmo-cell { width:44px; height:44px; background:#222; border:2px solid #0f0; color:#0f0; font-size:2rem; text-align:center; font-family:'VT323', monospace; text-transform:uppercase; display:flex; align-items:center; justify-content:center; box-sizing:border-box; transition:background 0.2s, border 0.2s; }
+    .tusmo-cell.correct { background:#003300; color:#39ff14; border-color:#39ff14; }
+    .tusmo-cell.present { background:#333300; color:#ffe14e; border-color:#ffe14e; }
+    .tusmo-cell.absent { background:#222; color:#444; border-color:#222; }
+    .tusmo-cell.active { border-color:#ffe14e; box-shadow:0 0 8px #ffe14e; }
+    .msg { color:#ffe14e; font-size:1.3rem; margin:10px 0 0 0; text-shadow:0 0 8px #ffe14e; }
+    .btn { margin:18px 0 0 0; background:#111; color:#ffe14e; border:2px solid #ffe14e; font-family:'VT323', monospace; font-size:1.1rem; padding:7px 22px; border-radius:7px; cursor:pointer; transition:background 0.2s; }
+    .btn:hover { background:#222; }
+    .hud { display:flex; flex-direction:row; justify-content:center; align-items:center; width:100%; max-width:calc(44px*8 + 40px); margin:0 auto 12px auto; font-size:1.2rem; color:#ffe14e; text-shadow:0 0 8px #ffe14e; letter-spacing:1px; }
+    .hud .info { font-size:1.1rem; text-align:center; width:100%; }
+        .keyboard { display:grid; grid-template-columns: repeat(10, 1fr); gap:10px; margin:18px auto 0 auto; max-width:600px; }
+    .key { background:#111; color:#ffe14e; border:2px solid #ffe14e; border-radius:6px; font-family:'VT323', monospace; font-size:1.2rem; padding:12px 0; text-align:center; cursor:pointer; user-select:none; transition:background 0.2s, color 0.2s, border 0.2s; min-width:48px; }
+    .key.correct { background:#003300; color:#39ff14; border-color:#39ff14; }
+    .key.present { background:#333300; color:#ffe14e; border-color:#ffe14e; }
+    .key.absent { background:#222; color:#444; border-color:#222; }
+    .tusmo-row.active-row { box-shadow:0 0 16px #ffe14e; border-radius:8px; }
+    /* CRT scanlines */
+    .crt-monitor:after { content:''; pointer-events:none; position:absolute; left:0; top:0; width:100%; height:100%; background:repeating-linear-gradient(0deg,rgba(0,255,0,0.04),rgba(0,255,0,0.04) 2px,transparent 2px,transparent 4px); mix-blend-mode:screen; }
+    /* Barres latérales CRT */
+    .crt-side { position: fixed; top: 0; width: 140px; height: 100vh; z-index: 2; pointer-events: none; background: linear-gradient(180deg, rgba(0,255,0,0.08) 0%, rgba(0,255,0,0.13) 50%, rgba(0,255,0,0.08) 100%); box-shadow: 0 0 18px 2px #0f0a, 0 0 24px 0 #0f0a; opacity: 0.45; filter: blur(0.5px); overflow: hidden; transition: opacity 0.3s; animation: crt-glow 2.2s infinite alternate; }
+    .crt-side-left { left: 0; border-right: 2px solid #0f0; }
+    .crt-side-right { right: 0; border-left: 2px solid #0f0; }
+    @media (max-width: 1100px) { .crt-side { display: none; } }
+    @keyframes crt-glow { 0% { box-shadow: 0 0 8px 2px #0f0a, 0 0 16px 0 #0f0a; opacity: 0.35; } 100% { box-shadow: 0 0 24px 8px #0f0, 0 0 60px 0 #0f0a; opacity: 0.5; } }
+  </style>
+  <script>
+    (async function() {
+      try {
+        const res = await fetch('/api/login', { method: 'GET', credentials: 'include' });
+        if (!res.ok) { window.location.href = 'index.html'; return; }
+        const data = await res.json();
+        if (!data.authenticated) {
+          window.location.href = 'index.html';
+        } else {
+          document.body.classList.add('auth-ok');
+        }
+      } catch (e) {
+        window.location.href = 'index.html';
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="crt-side crt-side-left"></div>
+  <div class="crt-side crt-side-right"></div>
+  <div class="crt-monitor">
+    <div class="center-content">
+      <div class="hud">
+        <span class="info" id="hud-essai"></span>
+      </div>
+      <div class="tusmo-board" id="tusmo"></div>
+      <div class="keyboard" id="keyboard"></div>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+  <script>
+    let word = '', wordLen = 7, maxTries = 6, currentTry = 0, currentInput = '', finished = false;
+    let tusmoDiv = document.getElementById('tusmo');
+    let msg = document.getElementById('msg');
+    let keyboardDiv = document.getElementById('keyboard');
+    let hudEssai = document.getElementById('hud-essai');
+    let letterStatus = {};
+    const KEYBOARD_ROWS = [
+      'AZERTYUIOP',
+      'QSDFGHJKLM',
+      'WXCVBN',
+    ];
+    let gameReady = false;
+    async function pickWordFromAPI() {
+  let word = '';
+  try {
+    let resp = await fetch('https://trouve-mot.fr/api/size/7');
+    let data = await resp.json();
+    word = (data[0] && data[0].name ? data[0].name : '').toUpperCase();
+    if(!/^[A-ZÀ-Ÿ]{7}$/.test(word)) {
+      return await pickWordFromAPI();
+    }
+  } catch(e) {
+    console.error("Erreur lors du fetch du mot :", e);
+    msg.textContent = "Erreur : impossible de récupérer un mot depuis l'API.";
+    throw e;
+  }
+  wordLen = word.length;
+  return word;
+}
+    function renderTusmo() {
+      tusmoDiv.innerHTML = '';
+      for(let i=0;i<maxTries;i++) {
+        let row = document.createElement('div');
+        row.className = 'tusmo-row';
+        if(i === currentTry && !finished) row.classList.add('active-row');
+        for(let j=0;j<wordLen;j++) {
+          let cell = document.createElement('div');
+          cell.className = 'tusmo-cell';
+          cell.textContent = '';
+          row.appendChild(cell);
+        }
+        tusmoDiv.appendChild(row);
+      }
+      msg.textContent = '';
+      updateHud();
+      renderKeyboard();
+    }
+    function updateHud() {
+      hudEssai.textContent = `Essai : ${currentTry+1} / ${maxTries}`;
+    }
+    function renderKeyboard() {
+      keyboardDiv.innerHTML = '';
+      const rows = [
+        'AZERTYUIOP',
+        'QSDFGHJKLM',
+        'WXCVBN'
+      ];
+      rows.forEach((rowStr, rowIdx) => {
+        let offset = 0;
+        if(rowIdx === 2) offset = 2; 
+        for(let i=0;i<10;i++) {
+          let k = '';
+          if(rowIdx === 2) {
+            if(i >= offset && i < offset + rowStr.length) {
+              k = rowStr[i - offset];
+            }
+          } else {
+            k = rowStr[i] || '';
+          }
+          let key = document.createElement('div');
+          key.className = 'key';
+          if(k) {
+            if(letterStatus[k] === 'correct') key.classList.add('correct');
+            else if(letterStatus[k] === 'present') key.classList.add('present');
+            else if(letterStatus[k] === 'absent') key.classList.add('absent');
+            key.textContent = k;
+            if(letterStatus[k] === 'absent') {
+              key.style.opacity = '0.4';
+              key.style.pointerEvents = 'none';
+            } else {
+              key.onclick = function() {
+                if(finished) return;
+                if(currentInput.length < wordLen) {
+                  currentInput += k;
+                  let row = tusmoDiv.children[currentTry];
+                  row.children[currentInput.length-1].textContent = k;
+                  updateActiveCell();
+                }
+              };
+            }
+          } else {
+            key.style.visibility = 'hidden';
+          }
+          keyboardDiv.appendChild(key);
+        }
+      });
+    }
+    async function resetTusmo() {
+      try {
+        gameReady = false;
+        word = await pickWordFromAPI();
+        wordLen = word.length;
+        currentTry = 0;
+        currentInput = '';
+        finished = false;
+        letterStatus = {};
+        renderTusmo();
+        updateActiveCell();
+        gameReady = true;
+      } catch(e) {
+        gameReady = false;
+      }
+    }
+    function updateActiveCell() {
+      for(let i=0;i<maxTries;i++) {
+        let row = tusmoDiv.children[i];
+        row.classList.remove('active-row');
+        for(let j=0;j<wordLen;j++) {
+          row.children[j].classList.remove('active');
+        }
+      }
+      if(currentTry < maxTries && !finished) {
+        let row = tusmoDiv.children[currentTry];
+        row.classList.add('active-row');
+        let idx = currentInput.length;
+        if(idx < wordLen) row.children[idx].classList.add('active');
+      }
+    }
+function removeAccents(str) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+    function showRowResult(guess, rowIdx) {
+      let row = tusmoDiv.children[rowIdx];
+      let wArr = word.split('');
+      let gArr = guess.split('');
+      let used = Array(wordLen).fill(false);
+      let wordNoAcc = removeAccents(word);
+      let guessNoAcc = removeAccents(guess);
+      let wArrNoAcc = wordNoAcc.split('');
+      let gArrNoAcc = guessNoAcc.split('');
+      for(let i=0;i<wordLen;i++) {
+        if(gArrNoAcc[i] === wArrNoAcc[i]) {
+          row.children[i].classList.add('correct');
+          letterStatus[gArr[i]] = 'correct';
+          used[i] = true;
+        }
+      }
+      for(let i=0;i<wordLen;i++) {
+        if(row.children[i].classList.contains('correct')) continue;
+        let found = false;
+        for(let j=0;j<wordLen;j++) {
+          if(!used[j] && gArrNoAcc[i] === wArrNoAcc[j]) { found = true; used[j]=true; break; }
+        }
+        if(found) {
+          row.children[i].classList.add('present');
+          if(letterStatus[gArr[i]] !== 'correct') letterStatus[gArr[i]] = 'present';
+        } else {
+          row.children[i].classList.add('absent');
+          if(!letterStatus[gArr[i]]) letterStatus[gArr[i]] = 'absent';
+        }
+      }
+      renderKeyboard();
+    }
+    document.addEventListener('keydown', async function(e) {
+      if(!gameReady || finished) return;
+      if(e.key === 'Backspace') {
+        if(currentInput.length > 0) {
+          currentInput = currentInput.slice(0,-1);
+          let row = tusmoDiv.children[currentTry];
+          row.children[currentInput.length].textContent = '';
+          updateActiveCell();
+        }
+      } else if(e.key === 'Enter') {
+        if(currentInput.length === wordLen) {
+          let guess = currentInput.toUpperCase();
+          if(removeAccents(guess) === removeAccents(word)) {
+            showRowResult(guess, currentTry);
+            msg.textContent = 'Access authorized.';
+            finished = true;
+            // API call
+            fetch('/api/progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ page: 'page5', solved: true })
+            });
+            setTimeout(() => { window.location.href = 'page5.html'; }, 1500);
+          } else {
+            showRowResult(guess, currentTry);
+            currentTry++;
+            currentInput = '';
+            if(currentTry >= maxTries) {
+              msg.textContent = 'Invalid.';
+              finished = true;
+              setTimeout(() => { resetTusmo(); }, 2000);
+            }
+          }
+          updateHud();
+          updateActiveCell();
+        }
+      } else if(e.key.length === 1 && /[a-zA-ZÀ-ÿ]/.test(e.key)) {
+        let upper = e.key.toUpperCase();
+        if(letterStatus[upper] === 'absent') return;
+        if(currentInput.length < wordLen) {
+          currentInput += upper;
+          let row = tusmoDiv.children[currentTry];
+          row.children[currentInput.length-1].textContent = upper;
+          updateActiveCell();
+        }
+      }
+    });
+    resetTusmo();
+  </script>
+</body>
+</html>

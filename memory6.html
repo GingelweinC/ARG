@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Memory CRT - Dossier 06</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <style>
+    body { background: #000; color: #0f0; font-family: 'VT323', monospace; margin:0; height:100vh; }
+    .crt-monitor { width:100vw; height:100vh; background:#001100; box-shadow:inset 0 0 100px #000a; display:flex; flex-direction:column; justify-content:center; align-items:center; position:relative; }
+    .center-content { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; }
+    .memory-board { display:grid; grid-template-columns: repeat(10, 48px); grid-template-rows: repeat(10, 48px); gap:8px; margin:30px 0 12px 0; }
+    .card {
+      width:48px; height:48px; perspective: 350px; background: none; border: none; box-shadow: none; position:relative; display:inline-block; cursor:pointer; user-select:none;
+    }
+    .card-inner {
+      width:100%; height:100%; position:relative; transition:transform 0.5s cubic-bezier(.4,2,.6,1); transform-style:preserve-3d;
+    }
+    .card.flipped .card-inner, .card.matched .card-inner { transform: rotateY(180deg); }
+    .card-front, .card-back {
+      position:absolute; width:100%; height:100%; left:0; top:0; display:flex; align-items:center; justify-content:center; border-radius:7px; font-size:1.3rem; font-family:'VT323', monospace; backface-visibility:hidden;
+    }
+    .card-front { background:#003300; color:#39ff14; border:1.5px solid #39ff14; transform: rotateY(180deg); }
+    .card-back { background:#111; color:#ffe14e; border:1.5px solid #0f0; }
+    .card.matched .card-front { background:#222; color:#ffe14e; border-color:#ffe14e; }
+    .card.matched .card-back { background:#222; color:#ffe14e; border-color:#ffe14e; }
+    .msg { color:#ffe14e; font-size:1.3rem; margin:10px 0 0 0; text-shadow:0 0 8px #ffe14e; }
+    .hud { display:flex; flex-direction:row; justify-content:center; align-items:center; width:100%; max-width:400px; margin:0 auto 12px auto; font-size:1.2rem; color:#ffe14e; text-shadow:0 0 8px #ffe14e; letter-spacing:1px; }
+    .hud .info { font-size:1.1rem; text-align:center; width:100%; }
+    .crt-monitor:after { content:''; pointer-events:none; position:absolute; left:0; top:0; width:100%; height:100%; background:repeating-linear-gradient(0deg,rgba(0,255,0,0.04),rgba(0,255,0,0.04) 2px,transparent 2px,transparent 4px); mix-blend-mode:screen; }
+    .crt-side { position: fixed; top: 0; width: 140px; height: 100vh; z-index: 2; pointer-events: none; background: linear-gradient(180deg, rgba(0,255,0,0.08) 0%, rgba(0,255,0,0.13) 50%, rgba(0,255,0,0.08) 100%); box-shadow: 0 0 18px 2px #0f0a, 0 0 24px 0 #0f0a; opacity: 0.45; filter: blur(0.5px); overflow: hidden; transition: opacity 0.3s; animation: crt-glow 2.2s infinite alternate; }
+    .crt-side-left { left: 0; border-right: 2px solid #0f0; }
+    .crt-side-right { right: 0; border-left: 2px solid #0f0; }
+    @media (max-width: 1100px) { .crt-side { display: none; } }
+    @keyframes crt-glow { 0% { box-shadow: 0 0 8px 2px #0f0a, 0 0 16px 0 #0f0a; opacity: 0.35; } 100% { box-shadow: 0 0 24px 8px #0f0, 0 0 60px 0 #0f0a; opacity: 0.5; } }
+  </style>
+  <style>
+    body { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+    body.auth-ok { visibility: visible; opacity: 1; }
+  </style>
+  <script>
+    (async function() {
+      try {
+        const res = await fetch('/api/login', { method: 'GET', credentials: 'include' });
+        if (!res.ok) { window.location.href = 'index.html'; return; }
+        const data = await res.json();
+        if (!data.authenticated) {
+          window.location.href = 'index.html';
+        } else {
+          document.body.classList.add('auth-ok');
+        }
+      } catch (e) {
+        window.location.href = 'index.html';
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="crt-side crt-side-left"></div>
+  <div class="crt-side crt-side-right"></div>
+  <div class="crt-monitor">
+    <div class="center-content">
+      <div class="hud">
+        <span class="info" id="hud-timer"></span>
+        <span class="info" id="hud-coups"></span>
+      </div>
+      <div class="memory-board" id="memory"></div>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+  <script>
+    const icons = [
+      'A','B','C','D','E','F','G','H','I','J',
+      'K','L','M','N','O','P','Q','R','S','T',
+      'U','V','W','X','Y','Z','0','1','2','3',
+      '4','5','6','7','8','9','@','#','$','%',
+      '&','*','+','-','=','?','!','>','<','~'
+    ]; 
+    let board = [], flipped = [], matched = [], coups = 0, timer = 600, timerInterval = null, lock = false;
+    let memoryDiv = document.getElementById('memory');
+    let msg = document.getElementById('msg');
+    let hudTimer = document.getElementById('hud-timer');
+    let hudCoups = document.getElementById('hud-coups');
+    function shuffle(arr) {
+      for(let i=arr.length-1;i>0;i--) {
+        let j=Math.floor(Math.random()*(i+1));
+        [arr[i],arr[j]]=[arr[j],arr[i]];
+      }
+      return arr;
+    }
+    function startGame() {
+      let cards = shuffle([...icons,...icons]);
+      board = cards;
+      flipped = [];
+      matched = Array(100).fill(false);
+      coups = 0;
+      timer = 600; 
+      msg.textContent = '';
+      renderBoard();
+      updateHud();
+      if(timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(()=>{
+        timer--;
+        updateHud();
+        if(timer <= 0) {
+          clearInterval(timerInterval);
+          msg.textContent = 'Temps écoulé ! Mélange...';
+          lock = true;
+          setTimeout(()=>{
+            lock = false;
+            startGame();
+          }, 1200);
+        }
+      },1000);
+    }
+    function renderBoard() {
+      memoryDiv.innerHTML = '';
+      for(let i=0;i<100;i++) {
+        let card = document.createElement('div');
+        card.className = 'card';
+        if(flipped.includes(i) || matched[i]) card.classList.add('flipped');
+        if(matched[i]) card.classList.add('matched');
+        card.innerHTML = `
+          <div class="card-inner">
+            <div class="card-front">${board[i]}</div>
+            <div class="card-back">HIDE</div>
+          </div>
+        `;
+        card.onclick = ()=>{
+          if(lock || flipped.includes(i) || matched[i]) return;
+          flipped.push(i);
+          renderBoard();
+          if(flipped.length===2) {
+            coups++;
+            lock = true;
+            setTimeout(()=>{
+              let [a,b]=flipped;
+              if(board[a]===board[b]) {
+                matched[a]=matched[b]=true;
+                if(matched.every(x=>x)) {
+                  msg.textContent = 'Access authorized.';
+                  clearInterval(timerInterval);
+                  // API call
+                  fetch('/api/progress', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ page: 'page6', solved: true })
+                  });
+                  setTimeout(()=>{ window.location.href = 'page6.html'; }, 1500);
+                }
+              }
+              flipped=[];
+              lock=false;
+              renderBoard();
+              updateHud();
+            }, 800);
+          }
+          updateHud();
+        };
+        memoryDiv.appendChild(card);
+      }
+    }
+    function updateHud() {
+      hudTimer.textContent = `Temps restant : ${Math.floor(timer/60).toString().padStart(2,'0')}:${(timer%60).toString().padStart(2,'0')}`;
+      hudCoups.textContent = `Coups : ${coups}`;
+    }
+    startGame();
+  </script>
+</body>
+</html>

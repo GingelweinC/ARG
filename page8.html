@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dossier 08</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <style>
+    body { background: #000; color: #0f0; font-family: 'VT323', monospace; margin:0; height:100vh; }
+    .crt-monitor { width:100vw; height:100vh; background:#001100; box-shadow:inset 0 0 100px #000a; display:flex; flex-direction:column; justify-content:center; align-items:center; position:relative; }
+    .center-content { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; }
+    .cmd-block { background:rgba(0,32,0,0.18); border-radius:8px; padding:30px 40px; font-size:1.3rem; box-shadow:0 0 10px #0f0a; margin-bottom:30px; }
+    .cmd-line { font-family:'VT323', monospace; display:block; margin-bottom:6px; }
+    .terminal-container {
+      width: 100%;
+      max-width: 700px;
+      margin: 40px auto 40px auto;
+      border-top: 2px solid #0f0;
+      background: rgba(0,32,0,0.12);
+      border-radius: 10px;
+      box-shadow: 0 0 10px #0f05;
+      padding: 20px 0 10px 0;
+      position: relative;
+    }
+    .terminal-input-wrapper{display:flex;align-items:center;padding-left:10px;}
+    .terminal-prompt{color:#0f0;margin-right:5px;font-size:1.6rem;text-shadow:0 0 5px #0f0a;}
+    .terminal-input{flex:1;background:transparent;border:none;color:#0f0;font-size:1.6rem;font-family:'VT323', monospace;padding:10px 5px;outline:none;caret-color:#0f0;}
+    .terminal-output{
+      text-align:left;
+      padding-left:10px;
+      min-height:192px;
+      display:flex;
+      flex-direction:column;
+      justify-content:flex-end;
+      overflow:hidden;
+      line-height:1.5;
+    }
+    .terminal-line {
+      white-space: pre-wrap;
+      text-shadow: 0 0 5px #0f0a;
+      font-size: 1.6rem;
+      font-family: 'VT323', monospace;
+    }
+    .crt-side {
+      position: fixed;
+      top: 0;
+      width: 140px;
+      height: 100vh;
+      z-index: 2;
+      pointer-events: none;
+      background: linear-gradient(180deg, rgba(0,255,0,0.08) 0%, rgba(0,255,0,0.13) 50%, rgba(0,255,0,0.08) 100%);
+      box-shadow: 0 0 18px 2px #0f0a, 0 0 24px 0 #0f0a;
+      opacity: 0.45;
+      filter: blur(0.5px);
+      overflow: hidden;
+      transition: opacity 0.3s;
+      animation: crt-glow 2.2s infinite alternate;
+    }
+    .crt-side::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; width: 100%; height: 100%;
+      background: repeating-linear-gradient(
+        to bottom, rgba(0,255,0,0.03) 0px, rgba(0,255,0,0.03) 2px, transparent 2px, transparent 8px
+      );
+      pointer-events: none;
+      z-index: 1;
+      animation: crt-scanlines 1.2s linear infinite;
+    }
+    .crt-side::after {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; width: 100%; height: 100%;
+      background: url('data:image/svg+xml;utf8,<svg width="140" height="600" viewBox="0 0 140 600" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="24" y="20" width="92" height="560" rx="32" fill="none" stroke="%230f0" stroke-width="2.2" opacity="0.11"/><path d="M70 20 V580" stroke="%230f0" stroke-width="1.2" opacity="0.07"/><path d="M38 80 H102" stroke="%230f0" stroke-width="1.2" opacity="0.07"/><path d="M38 520 H102" stroke="%230f0" stroke-width="1.2" opacity="0.07"/></svg>');
+      background-repeat: repeat-y;
+      background-size: 140px 600px;
+      opacity: 0.28;
+      z-index: 2;
+      pointer-events: none;
+      animation: crt-circuit 6s linear infinite alternate;
+    }
+    @keyframes crt-circuit {
+      0% { background-position-y: 0; }
+      100% { background-position-y: 200px; }
+    }
+    .crt-side-left { left: 0; border-right: 2px solid #0f0; }
+    .crt-side-right { right: 0; border-left: 2px solid #0f0; }
+    @media (max-width: 1100px) {
+      .crt-side { display: none; }
+    }
+    @keyframes crt-glow {
+      0% { box-shadow: 0 0 8px 2px #0f0a, 0 0 16px 0 #0f0a; opacity: 0.35; }
+      100% { box-shadow: 0 0 24px 8px #0f0, 0 0 60px 0 #0f0a; opacity: 0.5; }
+    }
+    body { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+    body.auth-ok { visibility: visible; opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="crt-side crt-side-left"></div>
+  <div class="crt-side crt-side-right"></div>
+  <div class="crt-monitor">
+    <div class="center-content">
+      <div class="cmd-block">
+        <span class="cmd-line">[access_log]</span>
+        <span class="cmd-line">- user_███ : access_granted</span>
+        <span class="cmd-line">- path : /mnt/veil/core/HIDE</span>
+        <span class="cmd-line">- checksum : valid</span>
+      </div>
+    </div>
+    <div class="terminal-container">
+      <div id="terminal-output" class="terminal-output"></div>
+      <div class="terminal-input-wrapper">
+        <span class="terminal-prompt">&gt;&gt;</span>
+        <input id="terminal-input" class="terminal-input" type="text" autocomplete="off" />
+      </div>
+    </div>
+    <style>.terminal-container{width:100%;max-width:700px;margin:40px auto 40px auto;border-top:2px solid #0f0;background:rgba(0,32,0,0.12);border-radius:10px;box-shadow:0 0 10px #0f05;padding:20px 0 10px 0;position:relative;}.terminal-input-wrapper{display:flex;align-items:center;padding-left:10px;}.terminal-prompt{color:#0f0;margin-right:5px;font-size:1.6rem;text-shadow:0 0 5px #0f0a;}.terminal-input{flex:1;background:transparent;border:none;color:#0f0;font-size:1.6rem;font-family:'VT323', monospace;padding:10px 5px;outline:none;caret-color:#0f0;}.terminal-output{text-align:left;padding-left:10px;min-height:192px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;line-height:1.5;}.terminal-line{white-space:pre-wrap;text-shadow:0 0 5px #0f0a;font-size:1.6rem;font-family:'VT323', monospace;}</style>
+  </div>
+  <script>
+    // Check access to page
+    (async function() {
+      try {
+        const res = await fetch('/api/progress?page=8', { credentials: 'include' });
+        if (!res.ok) {
+          window.location.href = 'dashboard.html';
+        } else {
+          const data = await res.json();
+          if (!data.allowed) {
+            window.location.href = 'dashboard.html';
+          } else {
+            document.body.classList.add('auth-ok');
+          }
+        }
+      } catch (e) {
+        window.location.href = 'dashboard.html';
+      }
+    })();
+    (() => {
+      const input = document.getElementById('terminal-input');
+      const output = document.getElementById('terminal-output');
+      let commandHistory = JSON.parse(localStorage.getItem('sharedTerminalHistory') || '[]');
+      function renderHistory() {
+        output.innerHTML = '';
+        commandHistory.forEach(item => {
+          const line = document.createElement('div');
+          line.className = 'terminal-line';
+          if(item.type === 'redirect') {
+            line.innerHTML = `<span class='redirect-msg'>&gt;&gt; ${item.text}</span>`;
+          } else {
+            line.textContent = `>> ${item.text}`;
+          }
+          output.appendChild(line);
+        });
+      }
+      renderHistory();
+      function addToHistory(text, type = 'cmd') {
+        commandHistory.push({text, type});
+        if(commandHistory.length > 5) commandHistory.shift();
+        localStorage.setItem('sharedTerminalHistory', JSON.stringify(commandHistory));
+        renderHistory();
+      }
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const value = input.value.trim();
+          if (value !== "") {
+            addToHistory(value, 'cmd');
+            input.value = "";
+            fetch('/api/terminal', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ command: value })
+            })
+            .then(r => r.json())
+            .then(res => {
+              if (res.type === 'clear') {
+                commandHistory = [];
+                localStorage.setItem('sharedTerminalHistory', JSON.stringify(commandHistory));
+                renderHistory();
+                return;
+              }
+              if (res.type === 'redirect' && res.url && res.message !== 'not yet') {
+                addToHistory(res.message || ('redirected to ' + res.url), 'redirect');
+                setTimeout(() => { window.location.href = res.url; }, 700);
+              } else if (res.message === 'not yet') {
+                addToHistory('not yet', 'redirect');
+              } else if (res.type === 'output') {
+                addToHistory(res.message, 'redirect');
+              } else {
+                addToHistory(res.message || 'invalid.', 'redirect');
+              }
+            })
+            .catch(() => {
+              addToHistory('Erreur serveur.', 'redirect');
+            });
+          }
+        }
+      });
+      commandHistory = commandHistory.filter(item => item.text !== 'Utilisez la commande cd dossierXX pour accéder à un dossier.');
+      localStorage.setItem('sharedTerminalHistory', JSON.stringify(commandHistory));
+      renderHistory();
+    })();
+  </script>
+  <style>
+    .terminal-output .redirect-msg { color: #4ec3ff; text-shadow: 0 0 8px #4ec3ff; font-weight: bold; }
+  </style>
+</body>
+</html>

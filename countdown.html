@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>706h Restantes</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: black;
+      color: rgb(0, 0, 0);
+      font-family: 'VT323', monospace;
+      min-height: 100vh;
+      min-width: 100vw;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-shadow: 0 0 8px rgb(0, 0, 0);
+      overflow: hidden;
+    }
+    #countdown {
+      font-size: 5vw;
+      margin-bottom: 4vh;
+      color: #a8001a;
+      text-shadow: 0 0 16px #a8001a, 0 0 4px #000;
+      letter-spacing: 0.08em;
+      width: 100vw;
+      text-align: center;
+      user-select: none;
+    }
+    #image-container {
+      position: relative;
+      width: 96vw;
+      max-width: 1200px;
+      max-height: 80vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #gradual-image {
+      width: 100%;
+      max-height: 80vh;
+      object-fit: contain;
+      filter: blur(20px);
+      transition: filter 1s linear;
+      display: block;
+      margin: 0 auto;
+      background: #000; 
+      opacity: 0; 
+    }
+  </style>
+</head>
+<body>
+  <div id="countdown">Chargement...</div>
+  <div id="image-container">
+    <img id="gradual-image" alt="See you soon">
+  </div>
+
+  <script>
+    const countdownEl = document.getElementById('countdown');
+    const imageEl = document.getElementById('gradual-image');
+
+    // load image via protected API
+    fetch('/api/see_you_soon', { credentials: 'include' })
+      .then(async resp => {
+        if (!resp.ok) throw new Error('Image protégée');
+        const blob = await resp.blob();
+        imageEl.src = URL.createObjectURL(blob);
+        imageEl.style.opacity = 1;
+        imageEl.style.background = '#000'; 
+      })
+      .catch(() => {
+        imageEl.style.display = 'none';
+      });
+
+    fetch('/api/countdown706_start')
+      .then(r => r.json())
+      .then(({start}) => {
+        const totalSeconds = 24 * 3600;
+        function updateCountdown() {
+          const now = Date.now();
+          let elapsed = Math.floor((now - start) / 1000);
+          if (isNaN(elapsed) || elapsed < 0) elapsed = 0;
+          let remaining = totalSeconds - elapsed;
+          if (isNaN(remaining) || remaining < 0) remaining = 0;
+          let h = Math.floor(remaining / 3600);
+          let m = Math.floor((remaining % 3600) / 60);
+          let s = remaining % 60;
+          if (elapsed >= totalSeconds || remaining <= 0) {
+            countdownEl.textContent = `000h 00m 00s`;
+            imageEl.style.filter = 'blur(0px)';
+            imageEl.style.opacity = 0;
+            showTeaser();
+            return;
+          }
+          countdownEl.textContent = `${String(h).padStart(3, '0')}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+          const progress = Math.min(1, Math.max(0, elapsed / totalSeconds));
+          const blur = Math.max(0, 60 * (1 - progress));
+          imageEl.style.filter = `blur(${blur.toFixed(2)}px)`;
+          imageEl.style.opacity = 1;
+          if (remaining > 0) {
+            requestAnimationFrame(updateCountdown);
+          }
+        }
+        updateCountdown();
+      });
+
+    // Fonction to display the teaser video
+    function showTeaser() {
+      const container = document.getElementById('image-container');
+      container.innerHTML = '';
+      const video = document.createElement('video');
+      video.id = 'teaser-video';
+      video.style.width = '100%';
+      video.style.maxHeight = '80vh';
+      video.style.background = '#000';
+      video.controls = true;
+      video.autoplay = true;
+      video.playsInline = true;
+      video.muted = false;
+      // Load video via protected API
+      fetch('/api/teaser', { credentials: 'include' })
+        .then(async resp => {
+          if (!resp.ok) throw new Error('Vidéo protégée');
+          const blob = await resp.blob();
+          video.src = URL.createObjectURL(blob);
+          container.appendChild(video);
+          video.play();
+        })
+        .catch(() => {
+          container.innerHTML = '<div style="color:#a8001a;text-align:center;font-size:2rem;">Vidéo protégée</div>';
+        });
+    }
+  </script>
+</body>
+</html>

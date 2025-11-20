@@ -1,2 +1,0 @@
-# ARG
-An ARG website

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mastermind CRT - Dossier 07</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <style>
+    body { background: #000; color: #0f0; font-family: 'VT323', monospace; margin:0; height:100vh; }
+    .crt-monitor { width:100vw; height:100vh; background:#001100; box-shadow:inset 0 0 100px #000a; display:flex; flex-direction:column; justify-content:center; align-items:center; position:relative; }
+    .center-content { display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; }
+    .mastermind-board { display:grid; grid-template-rows: repeat(8, 1fr); gap:8px; margin:40px 0 18px 0; }
+    .mm-row { display:flex; gap:8px; align-items:center; }
+    .mm-cell { width:38px; height:38px; background:#222; border:2px solid #0f0; color:#0f0; font-size:1.7rem; text-align:center; font-family:'VT323', monospace; border-radius:7px; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:background 0.2s, border 0.2s; }
+    .mm-cell.selected { border-color:#ffe14e; box-shadow:0 0 8px #ffe14e; }
+    .mm-feedback { display:flex; gap:4px; margin-left:12px; }
+    .mm-peg { width:14px; height:14px; border-radius:50%; background:#111; border:1.5px solid #0f0; }
+    .mm-peg.green { background:#39ff14; border-color:#39ff14; box-shadow:0 0 6px #39ff14; }
+    .mm-peg.white { background:#ffe14e; border-color:#ffe14e; }
+    .palette { display:flex; gap:12px; margin:18px 0 0 0; }
+    .color-btn { width:38px; height:38px; border-radius:7px; border:2px solid #ffe14e; background:#111; color:#ffe14e; font-size:1.5rem; font-family:'VT323', monospace; cursor:pointer; transition:background 0.2s, border 0.2s; display:flex; align-items:center; justify-content:center; }
+    .color-btn.selected { background:#ffe14e; color:#111; border-color:#ffe14e; }
+    .msg { color:#ffe14e; font-size:1.3rem; margin:10px 0 0 0; text-shadow:0 0 8px #ffe14e; }
+    .btn { margin:18px 0 0 0; background:#111; color:#ffe14e; border:2px solid #ffe14e; font-family:'VT323', monospace; font-size:1.1rem; padding:7px 22px; border-radius:7px; cursor:pointer; transition:background 0.2s; }
+    .btn:hover { background:#222; }
+    /* CRT scanlines */
+    .crt-monitor:after { content:''; pointer-events:none; position:absolute; left:0; top:0; width:100%; height:100%; background:repeating-linear-gradient(0deg,rgba(0,255,0,0.04),rgba(0,255,0,0.04) 2px,transparent 2px,transparent 4px); mix-blend-mode:screen; }
+    /* Barres latérales CRT */
+    .crt-side { position: fixed; top: 0; width: 140px; height: 100vh; z-index: 2; pointer-events: none; background: linear-gradient(180deg, rgba(0,255,0,0.08) 0%, rgba(0,255,0,0.13) 50%, rgba(0,255,0,0.08) 100%); box-shadow: 0 0 18px 2px #0f0a, 0 0 24px 0 #0f0a; opacity: 0.45; filter: blur(0.5px); overflow: hidden; transition: opacity 0.3s; animation: crt-glow 2.2s infinite alternate; }
+    .crt-side-left { left: 0; border-right: 2px solid #0f0; }
+    .crt-side-right { right: 0; border-left: 2px solid #0f0; }
+    @media (max-width: 1100px) { .crt-side { display: none; } }
+    @keyframes crt-glow { 0% { box-shadow: 0 0 8px 2px #0f0a, 0 0 16px 0 #0f0a; opacity: 0.35; } 100% { box-shadow: 0 0 24px 8px #0f0, 0 0 60px 0 #0f0a; opacity: 0.5; } }
+    body { visibility: hidden; opacity: 0; transition: opacity 0.2s; }
+    body.auth-ok { visibility: visible; opacity: 1; }
+  </style>
+  <script>
+    (async function() {
+      try {
+        const res = await fetch('/api/login', { method: 'GET', credentials: 'include' });
+        if (!res.ok) { window.location.href = 'index.html'; return; }
+        const data = await res.json();
+        if (!data.authenticated) {
+          window.location.href = 'index.html';
+        } else {
+          document.body.classList.add('auth-ok');
+        }
+      } catch (e) {
+        window.location.href = 'index.html';
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="crt-side crt-side-left"></div>
+  <div class="crt-side crt-side-right"></div>
+  <div class="crt-monitor">
+    <div class="center-content">
+      <div class="mastermind-board" id="mm-board"></div>
+      <div class="palette" id="palette"></div>
+      <button class="btn" id="validate">Valider</button>
+      <div class="msg" id="msg"></div>
+    </div>
+  </div>
+  <script>
+    const COLORS = [
+      {name:'Vert', code:'#39ff14'},
+      {name:'Jaune', code:'#ffe14e'},
+      {name:'Rouge', code:'#ff3b3b'},
+      {name:'Bleu', code:'#4ec3ff'},
+      {name:'Violet', code:'#b97aff'},
+      {name:'Cyan', code:'#00fff7'},
+      {name:'Orange', code:'#ff9900'},
+      {name:'Rose', code:'#ff6ec7'},
+    ];
+    const PEGS = 6, MAX_TRIES = 8;
+    let solution = [], guesses = [], feedbacks = [], current = Array(PEGS).fill(null), currentTry = 0, selectedColor = 0, finished = false;
+    let mmBoard = document.getElementById('mm-board');
+    let paletteDiv = document.getElementById('palette');
+    let msg = document.getElementById('msg');
+    function pickSolution() {
+      let arr = [];
+      for(let i=0;i<PEGS;i++) arr.push(Math.floor(Math.random()*COLORS.length));
+      return arr;
+    }
+    function renderBoard() {
+      mmBoard.innerHTML = '';
+      for(let i=0;i<MAX_TRIES;i++) {
+        let row = document.createElement('div');
+        row.className = 'mm-row';
+        for(let j=0;j<PEGS;j++) {
+          let cell = document.createElement('div');
+          cell.className = 'mm-cell';
+          if(i === currentTry && !finished) cell.classList.add('selected');
+          let val = (i < guesses.length) ? guesses[i][j] : (i === currentTry ? current[j] : null);
+          if(val !== null) {
+            cell.style.background = COLORS[val].code;
+            cell.textContent = '';
+          }
+          row.appendChild(cell);
+        }
+        // Feedback
+        let fb = document.createElement('div');
+        fb.className = 'mm-feedback';
+        let pegs = (i < feedbacks.length) ? feedbacks[i] : [];
+        for(let k=0;k<pegs.length;k++) {
+          let peg = document.createElement('div');
+          peg.className = 'mm-peg ' + (pegs[k] === 'black' ? 'green' : 'white');
+          fb.appendChild(peg);
+        }
+        row.appendChild(fb);
+        mmBoard.appendChild(row);
+      }
+    }
+    function renderPalette() {
+      paletteDiv.innerHTML = '';
+      for(let i=0;i<COLORS.length;i++) {
+        let btn = document.createElement('button');
+        btn.className = 'color-btn' + (selectedColor === i ? ' selected' : '');
+        btn.style.background = selectedColor === i ? COLORS[i].code : '#111';
+        btn.style.color = selectedColor === i ? '#111' : COLORS[i].code;
+        btn.textContent = COLORS[i].name[0];
+        btn.onclick = ()=>{ selectedColor = i; renderPalette(); };
+        paletteDiv.appendChild(btn);
+      }
+    }
+    function updateBoard() {
+      renderBoard();
+      renderPalette();
+    }
+    mmBoard.addEventListener('click', function(e) {
+      if(finished) return;
+      if(!e.target.classList.contains('mm-cell')) return;
+      let idx = Array.from(e.target.parentNode.children).indexOf(e.target);
+      if(idx >= PEGS) return;
+      current[idx] = selectedColor;
+      updateBoard();
+    });
+    document.getElementById('validate').onclick = function() {
+      if(finished) return;
+      if(current.some(v=>v===null)) { msg.textContent = 'Complétez la ligne.'; return; }
+      // Calcul feedback
+      let sol = solution.slice();
+      let guess = current.slice();
+      let blacks = 0, whites = 0;
+      let usedSol = Array(PEGS).fill(false), usedGuess = Array(PEGS).fill(false);
+      for(let i=0;i<PEGS;i++) {
+        if(guess[i] === sol[i]) { blacks++; usedSol[i]=true; usedGuess[i]=true; }
+      }
+      for(let i=0;i<PEGS;i++) {
+        if(usedGuess[i]) continue;
+        for(let j=0;j<PEGS;j++) {
+          if(!usedSol[j] && guess[i] === sol[j]) { whites++; usedSol[j]=true; break; }
+        }
+      }
+      let fb = Array(blacks).fill('black').concat(Array(whites).fill('white'));
+      guesses.push(guess);
+      feedbacks.push(fb);
+      if(blacks === PEGS) {
+        msg.textContent = 'Access authorized.';
+        finished = true;
+        // API call
+        fetch('/api/progress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ page: 'page7', solved: true })
+        });
+        setTimeout(()=>{ window.location.href = 'page7.html'; }, 1500);
+      } else {
+        current = Array(PEGS).fill(null);
+        currentTry++;
+        if(currentTry >= MAX_TRIES) {
+          msg.textContent = 'Invalid. Code : ' + solution.map(i=>COLORS[i].name[0]).join('');
+          finished = true;
+        }
+      }
+      updateBoard();
+    };
+    function resetMastermind() {
+      solution = pickSolution();
+      guesses = [];
+      feedbacks = [];
+      current = Array(PEGS).fill(null);
+      currentTry = 0;
+      finished = false;
+      selectedColor = 0;
+      msg.textContent = '';
+      updateBoard();
+    }
+    resetMastermind();
+  </script>
+</body>
+</html>
